@@ -17,10 +17,12 @@ This endpoint does not require any parameters. Simply make a GET request to rece
 
 ## Response
 
-Returns an array of image objects. Each object contains metadata about a generated image.
+Returns an object with an `imageUrls` array. Each array item contains the blob URL and filename.
 
-<ResponseField name="images" type="array">
-  Array of image objects containing metadata and URLs for generated images
+<ResponseField name="imageUrls" type="array">
+  Array of image objects, each containing:
+  - `url`: Full Azure Blob Storage URL with SAS token
+  - `name`: Blob filename (format: `{prompt}_{timestamp}.png`)
 </ResponseField>
 
 ## Example request
@@ -33,18 +35,14 @@ curl -X GET https://your-domain.com/api/getImages
 
 ```json
 {
-  "images": [
+  "imageUrls": [
     {
-      "id": "img_123",
-      "url": "https://example.com/image1.png",
-      "prompt": "A serene mountain landscape",
-      "createdAt": "2026-03-04T10:30:00Z"
+      "url": "https://account.blob.core.windows.net/images/sunset_1710432000000.png?sv=2021...",
+      "name": "sunset_1710432000000.png"
     },
     {
-      "id": "img_124",
-      "url": "https://example.com/image2.png",
-      "prompt": "A futuristic city skyline",
-      "createdAt": "2026-03-04T11:15:00Z"
+      "url": "https://account.blob.core.windows.net/images/mountains_1710431500000.png?sv=2021...",
+      "name": "mountains_1710431500000.png"
     }
   ]
 }
@@ -52,7 +50,7 @@ curl -X GET https://your-domain.com/api/getImages
 
 ## Response details
 
-The response structure depends on the data returned from the underlying Azure service. The endpoint does not cache results, ensuring you always receive the latest image collection.
+Images are sorted by timestamp in descending order (newest first). The endpoint does not cache results (cache: "no-store"), ensuring you always receive the latest image collection. Each URL includes a SAS token for secure access to Azure Blob Storage.
 
 ## Error codes
 

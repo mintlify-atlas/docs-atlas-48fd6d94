@@ -87,7 +87,8 @@
             "pages": [
               "api-reference/components/prompt-input",
               "api-reference/components/images",
-              "api-reference/components/header"
+              "api-reference/components/header",
+              "api-reference/components/client-provider"
             ]
           }
         ]

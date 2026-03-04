@@ -1,0 +1,110 @@
+---
+title: ClientProvider
+description: Client-side provider component for toast notifications in VisionaryAI
+---
+
+## Overview
+
+The `ClientProvider` component is a client-side wrapper that provides toast notification functionality throughout the VisionaryAI application using `react-hot-toast`.
+
+## Location
+
+```
+components/ClientProvider.tsx
+```
+
+## Component signature
+
+```typescript
+export default function RootLayout({
+  children,
+}: {
+  children: React.ReactNode
+})
+```
+
+## Props
+
+<ParamField path="children" type="React.ReactNode" required>
+  Child components to be wrapped with the toast notification provider
+</ParamField>
+
+## Features
+
+### Toast notifications
+
+- Provides global toast notification context via `react-hot-toast`
+- Displays notifications at the bottom-center of the screen
+- Used for success/error messages during image generation
+
+### Client-side rendering
+
+- Marked with `"use client"` directive for Next.js 13 App Router
+- Ensures toast functionality works in the client-side React context
+
+## Usage
+
+The component is used in the root layout to wrap the entire application:
+
+```typescript
+import ClientProvider from "../components/ClientProvider";
+
+export default function RootLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  return (
+    <html lang="en">
+      <body>
+        <ClientProvider>
+          <Header />
+          <PromptInput />
+          {children}
+        </ClientProvider>
+      </body>
+    </html>
+  );
+}
+```
+
+## Implementation details
+
+```typescript
+"use client"
+import{ Toaster } from "react-hot-toast"
+
+export default function RootLayout({
+    children,
+}: {
+    children: React.ReactNode
+}) {
+    return (
+        <>
+            <Toaster position="bottom-center"/>
+            {children}        
+        </>
+    )
+}
+```
+
+## Toast configuration
+
+<ParamField path="position" type="string" default="bottom-center">
+  Position of toast notifications on the screen
+</ParamField>
+
+## Dependencies
+
+- `react-hot-toast`: Toast notification library
+
+## Related components
+
+<CardGroup cols={2}>
+  <Card title="PromptInput" icon="keyboard" href="/api-reference/components/prompt-input">
+    Uses toast notifications to display generation status
+  </Card>
+  <Card title="Header" icon="heading" href="/api-reference/components/header">
+    Application header component
+  </Card>
+</CardGroup>
