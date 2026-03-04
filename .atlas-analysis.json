@@ -1,0 +1,106 @@
+{
+  "projectType": "saas",
+  "projectName": "VisionaryAI",
+  "projectDescription": "An AI-powered art gallery that generates images using DALL-E 3 and provides intelligent prompt suggestions via ChatGPT.",
+  "theme": "almond",
+  "primaryColor": "#7c7c7c",
+  "lightColor": "#0d0d0d",
+  "darkColor": "#c5c5c5",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Getting Started",
+            "pages": [
+              "introduction",
+              "quickstart",
+              "installation"
+            ]
+          },
+          {
+            "group": "Core Features",
+            "pages": [
+              "features/image-generation",
+              "features/prompt-suggestions",
+              "features/image-gallery",
+              "features/azure-integration"
+            ]
+          },
+          {
+            "group": "Azure Deployment",
+            "pages": [
+              "deployment/azure-setup",
+              "deployment/blob-storage",
+              "deployment/functions",
+              "deployment/environment-variables"
+            ]
+          },
+          {
+            "group": "Development",
+            "pages": [
+              "development/architecture",
+              "development/frontend",
+              "development/backend",
+              "development/local-setup"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "REST API",
+            "pages": [
+              "api-reference/overview",
+              "api-reference/generate-image",
+              "api-reference/get-suggestions",
+              "api-reference/get-images"
+            ]
+          },
+          {
+            "group": "Azure Functions",
+            "pages": [
+              "api-reference/azure/generate-image",
+              "api-reference/azure/chatgpt-suggestion",
+              "api-reference/azure/get-images",
+              "api-reference/azure/sas-token"
+            ]
+          },
+          {
+            "group": "Components",
+            "pages": [
+              "api-reference/components/prompt-input",
+              "api-reference/components/images",
+              "api-reference/components/header"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "DALL-E 3 image generation with custom prompts",
+    "AI-powered prompt suggestions using GPT-3.5 Turbo",
+    "Real-time image gallery with SWR data fetching",
+    "Azure Blob Storage for persistent image storage",
+    "Serverless Azure Functions backend",
+    "Next.js 13 App Router with TypeScript",
+    "Tailwind CSS styling with responsive design",
+    "Image optimization and caching"
+  ],
+  "publicApiSurface": [
+    "POST /api/generateImage - Generate images from text prompts",
+    "GET /api/suggestion - Get AI-generated prompt suggestions",
+    "GET /api/getImages - Retrieve all generated images",
+    "Azure Function: generateImage(prompt) - DALL-E 3 image creation",
+    "Azure Function: getChatGPTSuggestion() - GPT prompt generation",
+    "Azure Function: getImages() - Blob storage image retrieval",
+    "Azure Function: generateSASToken() - Azure storage authentication",
+    "Component: PromptInput - Text input with suggestion features",
+    "Component: Images - Responsive image gallery display",
+    "Component: Header - Application header and branding"
+  ]
+}
