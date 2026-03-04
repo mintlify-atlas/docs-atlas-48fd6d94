@@ -1,0 +1,320 @@
+---
+title: Image gallery
+description: Browse, view, and manage your AI-generated artwork in an interactive, responsive gallery interface
+---
+
+VisionaryAI's image gallery provides a beautiful, responsive interface for viewing all your DALL-E 3 generated images. The gallery automatically updates when new images are created and displays them in reverse chronological order.
+
+## Gallery layout
+
+The gallery uses a responsive grid that adapts to your screen size:
+
+<Tabs>
+  <Tab title="Mobile">
+    **1 column** layout on small screens
+    - Full-width images for easy viewing
+    - Vertical scrolling through your collection
+  </Tab>
+  
+  <Tab title="Tablet">
+    **2 column** grid on medium screens
+    - Balanced layout for portrait and landscape
+    - Efficient use of screen space
+  </Tab>
+  
+  <Tab title="Desktop">
+    **3 columns** on large screens
+    - Browse multiple images at once
+    - Quick scanning of your collection
+  </Tab>
+  
+  <Tab title="Wide displays">
+    **4 columns** on extra-large screens
+    - Maximum density for large monitors
+    - See more of your gallery at a glance
+  </Tab>
+</Tabs>
+
+```tsx components/Images.tsx
+<div className="grid gap-4 grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 px-0 md:px-10">
+  {images?.imageUrls?.map((image: ImageType, num: Number) => (
+    // Image cards...
+  ))}
+</div>
+```
+
+<Info>
+The gallery automatically adjusts its layout using Tailwind CSS responsive breakpoints, ensuring optimal viewing on any device.
+</Info>
+
+## Featured image
+
+The most recent image (first in the gallery) receives special treatment:
+
+- **Double size**: Spans 2 columns and 2 rows on medium+ screens
+- **Prominent display**: Makes your latest creation stand out
+- **Auto-refresh**: Updates automatically when you generate new images
+
+```tsx components/Images.tsx
+<div
+  className={`relative cursor-help 
+    ${num === 0 && "md:col-span-2 md:row-span-2"}
+    hover:scale-[104%] transition transform duration-300 ease-in-out
+  `}
+>
+```
+
+<Tip>
+The featured image position makes it easy to quickly check your most recent generation without scrolling.
+</Tip>
+
+## Interactive image cards
+
+Each image card includes interactive features for a better viewing experience:
+
+### Hover effects
+
+When you hover over an image:
+
+<Steps>
+  <Step title="Scale animation">
+    The image scales up to 104% of its original size with smooth animation.
+  </Step>
+  
+  <Step title="Prompt overlay">
+    A white overlay fades in (80% opacity) displaying the prompt used to generate the image.
+  </Step>
+  
+  <Step title="Prompt text">
+    The original prompt appears centered on the overlay in a light, readable font.
+  </Step>
+</Steps>
+
+```tsx components/Images.tsx
+<div className="absolute flex justify-center items-center w-full h-full bg-white opacity-0 hover:opacity-80 transition-opacity duration-200 z-10">
+  <p className="text-center font-light text-lg p-5">
+    {image.name.split("_").shift()?.toString().split(".").shift()}
+  </p>
+</div>
+```
+
+<Note>
+The prompt text is extracted from the image filename, which follows the pattern: `prompt_timestamp.png`
+</Note>
+
+### Smooth transitions
+
+All gallery interactions use CSS transitions:
+
+- **Scale**: 300ms ease-in-out for smooth enlargement
+- **Opacity**: 200ms transition for overlay fade
+- **Transform**: GPU-accelerated for smooth performance
+
+## Refresh functionality
+
+The gallery includes a floating refresh button for manual updates:
+
+### Button location
+
+- Fixed position at bottom-right of the screen
+- Floats above all content (z-index: 20)
+- Always accessible regardless of scroll position
+
+```tsx components/Images.tsx
+<button
+  onClick={() => refreshImages(images)}
+  className="fixed bottom-10 right-10 bg-violet-400/90 text-white px-5 py-3 rounded-md hover:bg-violet-500 focus:outline-none focus:ring-2 font-bold z-20"
+>
+  {!isLoading && isValidating ? "Refreshing..." : "Refresh Images"}
+</button>
+```
+
+### Button states
+
+<Accordion title="Idle state">
+Displays "Refresh Images" in violet with 90% opacity background.
+</Accordion>
+
+<Accordion title="Refreshing state">
+Shows "Refreshing..." while fetching updated image list from the server.
+</Accordion>
+
+<Accordion title="Hover state">
+Background changes to solid violet on hover with smooth color transition.
+</Accordion>
+
+<Warning>
+The refresh button passes current images to the refresh function for optimistic UI updates, showing cached data while new data loads.
+</Warning>
+
+## Automatic updates
+
+The gallery automatically refreshes when you generate new images:
+
+```tsx components/PromptInput.tsx
+const { mutate: updateImages } = useSWR("images", fetchImages, {
+  revalidateOnFocus: false,
+});
+
+const submitPrompt = async (useSuggestion?: boolean) => {
+  // ... image generation logic ...
+  
+  updateImages(); // Automatically refresh gallery
+};
+```
+
+<Info>
+SWR's mutate function triggers a revalidation of the gallery data, ensuring new images appear without manual refresh.
+</Info>
+
+## Loading states
+
+The gallery provides clear feedback during data fetching:
+
+### Initial load
+
+When first loading the gallery:
+
+```
+Loading AI Generated Images...
+```
+
+This message appears centered above the gallery grid with:
+- Light font weight for subtle appearance
+- Violet "AI" text for brand consistency
+- Bottom padding to separate from images
+
+### Empty state
+
+If no images exist yet, the grid simply remains empty. Users can generate their first image using the prompt input above.
+
+## Image sorting
+
+Images are automatically sorted by timestamp in descending order (newest first):
+
+```javascript azure/src/functions/getImages.js
+const sortedImageUrls = imageUrls.sort((a, b) => {
+  const aName = a.name.split("_").pop().toString().split(".").shift();
+  const bName = b.name.split("_").pop().toString().split(".").shift();
+  return bName - aName; 
+})
+```
+
+This ensures:
+- Your latest creations always appear first
+- The featured image is always your most recent generation
+- Chronological browsing from new to old
+
+<Tip>
+Filenames include Unix timestamps, enabling precise chronological sorting even when multiple images are generated in quick succession.
+</Tip>
+
+## Image data structure
+
+Each image in the gallery includes:
+
+```typescript components/Images.tsx
+type ImageType = {
+  name: string;  // Format: "prompt_timestamp.png"
+  url: string;   // Full Azure Blob Storage URL with SAS token
+};
+```
+
+### URL structure
+
+Image URLs follow this pattern:
+
+```
+https://{accountName}.blob.core.windows.net/{containerName}/{imageName}?{sasToken}
+```
+
+<Accordion title="SAS token security">
+SAS (Shared Access Signature) tokens provide time-limited, secure access to images in Azure Blob Storage without exposing account keys.
+</Accordion>
+
+<Accordion title="Image naming">
+The filename format `prompt_timestamp.png` allows extracting both the generation prompt and exact creation time from the filename alone.
+</Accordion>
+
+## Performance optimization
+
+The gallery is optimized for fast loading and smooth interactions:
+
+### Image optimization
+
+Next.js Image component provides:
+
+```tsx components/Images.tsx
+<Image
+  unoptimized={true}
+  src={image.url}
+  alt={image.name}
+  width={500}
+  height={500}
+  className="w-full rounded-sm shadow-2xl drop-shadow-lg z-10"
+/>
+```
+
+- `unoptimized={true}`: Images served directly from Azure Blob Storage
+- Consistent 500x500 dimensions for predictable layout
+- Shadow and drop-shadow for visual depth
+
+<Note>
+Images are set to unoptimized because they're already optimized by DALL-E 3 at 1024x1024 and served through Azure's CDN.
+</Note>
+
+### SWR caching
+
+Gallery data is cached using SWR:
+
+```tsx components/Images.tsx
+const {
+  data: images,
+  isLoading,
+  mutate: refreshImages,
+  isValidating,
+} = useSWR("images", fetchImages, {
+  revalidateOnFocus: false,
+});
+```
+
+Benefits:
+- Instant display of cached images on page load
+- Background revalidation when manually triggered
+- Optimistic UI updates during refresh
+- Reduced API calls with `revalidateOnFocus: false`
+
+## Responsive design features
+
+The gallery adapts to different screen sizes:
+
+| Breakpoint | Columns | Padding | Featured |
+|------------|---------|---------|----------|
+| Mobile (< 768px) | 1 | None | 1x1 |
+| Tablet (768px+) | 2 | 2.5rem | 2x2 |
+| Desktop (1024px+) | 3 | 2.5rem | 2x2 |
+| Wide (1280px+) | 4 | 2.5rem | 2x2 |
+
+## Accessibility
+
+The gallery includes accessibility features:
+
+- **Alt text**: Each image uses its filename as alt text
+- **Keyboard navigation**: All interactive elements are keyboard accessible
+- **Focus states**: Visible focus rings on buttons
+- **Cursor hints**: `cursor-help` indicates prompt overlay on hover
+
+<Warning>
+While alt text is provided, it uses the technical filename. For production use, consider storing more descriptive alt text with each image.
+</Warning>
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Azure integration" icon="cloud" href="/features/azure-integration">
+    Learn how images are stored and served through Azure
+  </Card>
+  <Card title="Image generation" icon="wand-magic-sparkles" href="/features/image-generation">
+    Understand the image creation process
+  </Card>
+</CardGroup>

@@ -1,0 +1,130 @@
+---
+title: Introduction
+description: Learn about VisionaryAI, an AI-powered art gallery that combines DALL-E 3 and ChatGPT to generate stunning images from text prompts
+---
+
+Welcome to VisionaryAI, a cutting-edge AI image generation platform that brings your creative visions to life. Built with modern web technologies and powered by OpenAI's latest models, VisionaryAI offers a seamless experience for generating high-quality AI artwork.
+
+## What is VisionaryAI?
+
+VisionaryAI is an AI-powered art gallery application that leverages DALL-E 3 for image generation and ChatGPT for intelligent prompt suggestions. The platform combines a Next.js frontend with Azure Functions backend to create a scalable, serverless architecture for AI image generation.
+
+<Info>
+VisionaryAI uses DALL-E 3, OpenAI's most advanced image generation model, capable of producing 1024x1024 images with enhanced detail and accuracy.
+</Info>
+
+## Key features
+
+VisionaryAI offers a comprehensive set of features designed to enhance your creative workflow:
+
+<Accordion title="AI-powered image generation">
+Generate high-quality 1024x1024 images using DALL-E 3 from simple text prompts. The system handles rate limiting and error management automatically.
+
+```typescript
+const response = await openai.createImage({
+  model: "dall-e-3",
+  prompt: prompt,
+  n: 1,
+  size: '1024x1024',
+})
+```
+</Accordion>
+
+<Accordion title="Intelligent prompt suggestions">
+ChatGPT (GPT-3.5 Turbo Instruct) generates creative prompt suggestions that include genre, style, and artistic details to help you get started.
+
+```javascript
+const response = await openai.createCompletion({
+  model: 'gpt-3.5-turbo-instruct',
+  prompt: 'Write a random text prompt for DALL.E to generate an image...',
+  max_tokens: 100,
+  temperature: 0.9,
+})
+```
+</Accordion>
+
+<Accordion title="Cloud storage integration">
+All generated images are automatically stored in Azure Blob Storage with secure SAS token authentication, ensuring persistent access to your creations.
+</Accordion>
+
+<Accordion title="Real-time image gallery">
+View your generated images in a responsive grid layout powered by SWR for optimistic UI updates and efficient data fetching.
+
+```tsx
+const {
+  data: images,
+  isLoading,
+  mutate: refreshImages,
+  isValidating,
+} = useSWR("images", fetchImages, {
+  revalidateOnFocus: false,
+});
+```
+</Accordion>
+
+## Architecture overview
+
+VisionaryAI uses a modern serverless architecture:
+
+<Steps>
+  <Step title="Frontend layer">
+    Next.js 13 with App Router provides the React-based user interface with server-side rendering and optimized performance.
+  </Step>
+  
+  <Step title="API layer">
+    Next.js API routes act as a proxy between the frontend and Azure Functions, handling request routing and data transformation.
+  </Step>
+  
+  <Step title="Backend layer">
+    Azure Functions provide serverless compute for OpenAI API calls, image processing, and blob storage management.
+  </Step>
+  
+  <Step title="Storage layer">
+    Azure Blob Storage stores generated images with secure SAS token-based access control.
+  </Step>
+</Steps>
+
+## Technology stack
+
+VisionaryAI is built with modern, production-ready technologies:
+
+- **Frontend**: Next.js 13.2.4, React 18.2.0, TypeScript 5.0.2, Tailwind CSS 3.3.2
+- **State management**: SWR 2.1.1 for data fetching and caching
+- **AI models**: OpenAI API 3.2.1 (DALL-E 3 + GPT-3.5 Turbo Instruct)
+- **Backend**: Azure Functions 4.0, Node.js
+- **Storage**: Azure Blob Storage with SAS token authentication
+- **UI components**: React Hot Toast for notifications
+- **Analytics**: Vercel Analytics for performance monitoring
+
+<Tip>
+The serverless architecture ensures automatic scaling based on demand, with no server management required.
+</Tip>
+
+## Use cases
+
+VisionaryAI is perfect for various creative applications:
+
+- **Digital artists**: Generate concept art and inspiration for creative projects
+- **Content creators**: Create unique visuals for social media, blogs, and marketing materials
+- **Designers**: Explore design ideas and visual concepts quickly
+- **Educators**: Generate educational imagery for presentations and teaching materials
+- **Developers**: Learn how to integrate OpenAI APIs in a production application
+
+<Warning>
+Generated images are stored in Azure Blob Storage. Ensure you have adequate storage capacity and monitor costs based on your usage patterns.
+</Warning>
+
+## Getting started
+
+Ready to start generating AI artwork? Check out the [Quickstart](/quickstart) guide to set up your account and generate your first image, or dive into the [Installation](/installation) guide for detailed setup instructions.
+
+## Community and support
+
+VisionaryAI is open source and welcomes contributions:
+
+- **GitHub**: [github.com/Srijan-D/DALLE3](https://github.com/Srijan-D/DALLE3)
+- **Creator**: [@Srijan_Dby](https://twitter.com/Srijan_Dby) on Twitter
+
+<Note>
+The project is built with extensibility in mind. Feel free to fork the repository and customize it for your specific needs.
+</Note>

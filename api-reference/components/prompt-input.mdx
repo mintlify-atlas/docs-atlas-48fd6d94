@@ -1,0 +1,110 @@
+---
+title: PromptInput
+description: An interactive prompt input component for generating AI images with ChatGPT suggestions
+---
+
+## Overview
+
+The `PromptInput` component provides a form interface for users to enter prompts for AI image generation. It integrates with ChatGPT to provide intelligent suggestions and uses SWR for efficient data fetching and cache management.
+
+## Props
+
+This component does not accept any props.
+
+## State management
+
+The component uses the following state and hooks:
+
+- `input` - Local state for managing the text input value
+- `useSWR` - Fetches AI suggestions from ChatGPT API
+- `useSWR` - Manages image generation updates
+- Toast notifications for user feedback
+
+## Key features
+
+- Real-time prompt input with textarea
+- AI-powered suggestion generation via ChatGPT
+- Submit custom prompts or use AI suggestions
+- Refresh suggestions on demand
+- Loading states and disabled button logic
+- Integration with DALL-E 3 image generation API
+
+## Usage
+
+```tsx
+import PromptInput from '@/components/PromptInput';
+
+function App() {
+  return (
+    <div>
+      <PromptInput />
+    </div>
+  );
+}
+```
+
+## Component structure
+
+The component renders:
+
+1. **Textarea** - Input field for entering custom prompts
+2. **Generate button** - Submits the custom prompt for image generation
+3. **Use suggestion button** - Submits the AI-generated suggestion
+4. **New suggestion button** - Fetches a new suggestion from ChatGPT
+5. **Suggestion display** - Shows the current AI suggestion below the form
+
+## Methods
+
+### submitPrompt
+
+Handles prompt submission to the image generation API.
+
+<ParamField path="useSuggestion" type="boolean" optional>
+  Whether to use the AI suggestion instead of the user's input
+</ParamField>
+
+```tsx
+const submitPrompt = async (useSuggestion?: boolean) => {
+  const p = useSuggestion ? suggestion : inputPrompt;
+  const res = await fetch("/api/generateImage", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ prompt: p }),
+  });
+  // Handle response and update images
+};
+```
+
+### handleSubmit
+
+Form submission handler for the custom prompt.
+
+```tsx
+const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+  e.preventDefault();
+  await submitPrompt();
+};
+```
+
+## API endpoints
+
+- `/api/suggestion` - Fetches AI-powered prompt suggestions from ChatGPT
+- `/api/generateImage` - Generates images using DALL-E 3 based on the provided prompt
+
+## Dependencies
+
+- `react` - State management with useState
+- `swr` - Data fetching and caching
+- `react-hot-toast` - Toast notifications
+- `@/lib/fetchSuggestionFromChatGPT` - Suggestion fetcher
+- `@/lib/fetchImages` - Image fetcher
+
+## Styling
+
+The component uses Tailwind CSS classes for responsive design:
+
+- Flexbox layout with responsive column/row switching
+- Violet color scheme for primary actions
+- Shadow effects and rounded corners
+- Disabled states with gray styling
+- Transition animations for smooth interactions

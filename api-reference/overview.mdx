@@ -1,0 +1,42 @@
+---
+title: API overview
+description: Learn how to interact with the VisionaryAI API to generate images and get AI-powered suggestions
+---
+
+The VisionaryAI API provides endpoints for AI-powered image generation and management. All endpoints are RESTful and return JSON responses.
+
+## Base URL
+
+```
+https://your-domain.com/api
+```
+
+## Available endpoints
+
+<CardGroup cols={2}>
+  <Card title="Generate image" icon="image" href="/api-reference/generate-image">
+    Create AI-generated images from text prompts
+  </Card>
+  <Card title="Get suggestions" icon="lightbulb" href="/api-reference/get-suggestions">
+    Retrieve AI-powered prompt suggestions
+  </Card>
+  <Card title="Get images" icon="images" href="/api-reference/get-images">
+    Fetch previously generated images
+  </Card>
+</CardGroup>
+
+## Authentication
+
+Currently, the API endpoints do not require authentication. This may change in future versions.
+
+## Rate limiting
+
+Rate limiting policies may apply depending on your deployment configuration.
+
+## Error handling
+
+All endpoints return standard HTTP status codes:
+
+- `200` - Success
+- `400` - Bad request (invalid parameters)
+- `500` - Internal server error

@@ -1,0 +1,445 @@
+---
+title: Local setup
+description: Set up VisionaryAI development environment on your local machine
+---
+
+Follow this guide to set up VisionaryAI for local development, including both the Next.js frontend and Azure Functions backend.
+
+## Prerequisites
+
+Before starting, ensure you have the following installed:
+
+<Accordion title="Required software">
+  - **Node.js**: Version 18.x or higher
+  - **npm**: Version 8.x or higher (or yarn/pnpm)
+  - **Azure Functions Core Tools**: Version 4.x
+  - **Visual Studio Code**: Recommended IDE
+  - **Git**: For version control
+</Accordion>
+
+<Accordion title="Required accounts">
+  - **OpenAI account**: For DALL-E 3 and GPT API access
+  - **Azure account**: For Blob Storage and Functions deployment
+</Accordion>
+
+## Installation
+
+### Clone the repository
+
+```bash
+git clone https://github.com/Srijan-D/DALLE3.git
+cd DALLE3
+```
+
+### Install dependencies
+
+<Steps>
+  <Step title="Install frontend dependencies">
+    ```bash
+    npm install
+    ```
+    
+    This installs Next.js, React, Tailwind CSS, and other frontend dependencies.
+  </Step>
+  
+  <Step title="Install backend dependencies">
+    ```bash
+    cd azure
+    npm install
+    cd ..
+    ```
+    
+    This installs Azure Functions SDK, OpenAI client, and Azure Storage SDK.
+  </Step>
+</Steps>
+
+<Info>
+  You can use `yarn` or `pnpm` instead of `npm` if preferred. The project supports all major package managers.
+</Info>
+
+## Configuration
+
+### OpenAI API setup
+
+<Steps>
+  <Step title="Get OpenAI API key">
+    1. Visit [OpenAI API Keys](https://platform.openai.com/api-keys)
+    2. Click "Create new secret key"
+    3. Copy the generated API key (starts with `sk-`)
+    4. Note your organization ID from [Settings](https://platform.openai.com/account/org-settings)
+  </Step>
+  
+  <Step title="Create environment file">
+    Create a `.env.local` file in the `azure` directory:
+    
+    ```bash
+    cd azure
+    touch .env.local
+    ```
+  </Step>
+  
+  <Step title="Add OpenAI credentials">
+    Add the following to `azure/.env.local`:
+    
+    ```bash
+    OPEN_AI_KEY=sk-your-api-key-here
+    OPEN_AI_ORGANIZATION=org-your-org-id-here
+    ```
+  </Step>
+</Steps>
+
+<Note>
+  Never commit `.env.local` files to version control. They should be listed in `.gitignore`.
+</Note>
+
+### Azure Blob Storage setup
+
+<Steps>
+  <Step title="Create Azure Storage Account">
+    1. Log in to [Azure Portal](https://portal.azure.com)
+    2. Create a new Storage Account
+    3. Choose a unique name for your storage account
+    4. Select a region close to your users
+    5. Use Standard performance tier for development
+  </Step>
+  
+  <Step title="Create images container">
+    1. Navigate to your Storage Account
+    2. Go to "Containers" under Data Storage
+    3. Click "+ Container"
+    4. Name it `images`
+    5. Set public access level to "Private"
+  </Step>
+  
+  <Step title="Get storage credentials">
+    1. In your Storage Account, go to "Access keys"
+    2. Copy the storage account name
+    3. Copy one of the access keys (key1 or key2)
+  </Step>
+  
+  <Step title="Add to environment file">
+    Add to `azure/.env.local`:
+    
+    ```bash
+    accountName=your-storage-account-name
+    accountKey=your-storage-account-key
+    ```
+  </Step>
+</Steps>
+
+<Info>
+  Azure provides a free tier with 5 GB storage and 20,000 read operations. This is sufficient for development.
+</Info>
+
+## Running the application
+
+### Start the backend
+
+<Steps>
+  <Step title="Navigate to Azure directory">
+    ```bash
+    cd azure
+    ```
+  </Step>
+  
+  <Step title="Start Azure Functions">
+    ```bash
+    npm run start
+    ```
+    
+    Or using Azure Functions Core Tools directly:
+    
+    ```bash
+    func start
+    ```
+  </Step>
+  
+  <Step title="Verify functions are running">
+    You should see output like:
+    
+    ```
+    Functions:
+    
+    generateImage: [POST] http://localhost:7071/api/generateImage
+    
+    getChatGPTSuggestion: [GET] http://localhost:7071/api/getChatGPTSuggestion
+    
+    getImages: [GET] http://localhost:7071/api/getImages
+    ```
+  </Step>
+</Steps>
+
+<Note>
+  Keep this terminal window open. The functions run on port 7071 by default.
+</Note>
+
+### Update frontend API endpoints
+
+For local development, update the API routes to point to your local Azure Functions:
+
+<Accordion title="app/api/generateImage/route.ts">
+  ```typescript
+  const response = await fetch(
+    "http://localhost:7071/api/generateImage",
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ prompt }),
+    }
+  );
+  ```
+</Accordion>
+
+<Accordion title="app/api/getImages/route.ts">
+  ```typescript
+  const response = await fetch(
+    "http://localhost:7071/api/getImages",
+    {
+      cache: "no-store",
+    }
+  );
+  ```
+</Accordion>
+
+<Accordion title="app/api/suggestion/route.ts">
+  ```typescript
+  const response = await fetch(
+    "http://localhost:7071/api/getChatGPTSuggestion",
+    {
+      cache: "no-store",
+    }
+  );
+  ```
+</Accordion>
+
+### Start the frontend
+
+<Steps>
+  <Step title="Open new terminal">
+    Navigate to the project root directory.
+  </Step>
+  
+  <Step title="Start Next.js development server">
+    ```bash
+    npm run dev
+    ```
+  </Step>
+  
+  <Step title="Open in browser">
+    Visit [http://localhost:3000](http://localhost:3000)
+  </Step>
+</Steps>
+
+<Info>
+  The Next.js development server includes hot module replacement (HMR), so changes to frontend code will automatically refresh the browser.
+</Info>
+
+## Development workflow
+
+### Project structure
+
+Here's the complete project structure:
+
+```
+visionaryai/
+├── app/                        # Next.js 13 App Router
+│   ├── api/                    # API route handlers
+│   ├── layout.tsx              # Root layout
+│   └── page.tsx                # Home page
+├── azure/                      # Azure Functions backend
+│   ├── src/functions/          # Function implementations
+│   ├── lib/                    # Shared utilities
+│   └── .env.local              # Local environment variables
+├── components/                 # React components
+├── lib/                        # Frontend utilities
+├── public/                     # Static assets
+├── styles/                     # Global styles
+└── package.json                # Frontend dependencies
+```
+
+### Making changes
+
+<Tabs>
+  <Tab title="Frontend changes">
+    1. Edit files in `app/`, `components/`, or `lib/`
+    2. Save the file
+    3. Browser automatically refreshes with changes
+    4. Check console for any errors
+  </Tab>
+  
+  <Tab title="Backend changes">
+    1. Edit files in `azure/src/functions/` or `azure/lib/`
+    2. Save the file
+    3. Azure Functions automatically reloads
+    4. Test the endpoint with updated logic
+  </Tab>
+  
+  <Tab title="Styling changes">
+    1. Modify Tailwind classes in components
+    2. Or edit `styles/globals.css`
+    3. Changes reflect immediately with HMR
+  </Tab>
+</Tabs>
+
+### Testing image generation
+
+<Steps>
+  <Step title="Open the application">
+    Navigate to http://localhost:3000
+  </Step>
+  
+  <Step title="Get a suggestion">
+    Click "New suggestion" to get an AI-generated prompt idea.
+  </Step>
+  
+  <Step title="Generate an image">
+    Either:
+    - Click "Use suggestion" to generate with the AI prompt
+    - Enter your own prompt and click "Generate"
+  </Step>
+  
+  <Step title="Monitor progress">
+    - Watch the toast notification for generation status
+    - Check Azure Functions terminal for logs
+    - Images appear in the gallery once uploaded
+  </Step>
+</Steps>
+
+<Note>
+  DALL-E 3 image generation typically takes 10-30 seconds. Be patient while the AI creates your image.
+</Note>
+
+## Troubleshooting
+
+<Accordion title="Azure Functions not starting">
+  **Problem**: Functions fail to start or show errors.
+  
+  **Solutions**:
+  - Verify Azure Functions Core Tools is installed: `func --version`
+  - Check that `.env.local` exists and has correct credentials
+  - Ensure Node.js version is 18.x or higher: `node --version`
+  - Try deleting `node_modules` and running `npm install` again
+</Accordion>
+
+<Accordion title="OpenAI API errors">
+  **Problem**: "Invalid API key" or "Rate limit exceeded" errors.
+  
+  **Solutions**:
+  - Verify API key starts with `sk-` and is complete
+  - Check OpenAI account has available credits
+  - Ensure you have access to DALL-E 3 API (may require paid plan)
+  - Review [OpenAI rate limits](https://platform.openai.com/account/rate-limits)
+</Accordion>
+
+<Accordion title="Azure Blob Storage errors">
+  **Problem**: "Storage account not found" or "Authentication failed".
+  
+  **Solutions**:
+  - Verify storage account name is correct (no typos)
+  - Ensure access key is the full key (very long string)
+  - Check that the `images` container exists
+  - Confirm storage account is not behind a firewall
+</Accordion>
+
+<Accordion title="Images not appearing">
+  **Problem**: Generation succeeds but images don't show in gallery.
+  
+  **Solutions**:
+  - Click "Refresh Images" button
+  - Check Azure Portal to verify blobs were uploaded
+  - Verify SAS token generation is working (check backend logs)
+  - Check browser console for CORS or network errors
+</Accordion>
+
+<Accordion title="CORS errors">
+  **Problem**: Browser shows CORS policy errors.
+  
+  **Solutions**:
+  - Ensure Azure Functions is running on port 7071
+  - Verify API routes are pointing to `localhost:7071`
+  - Configure CORS in Azure Portal for production deployments
+  - Check that requests include proper headers
+</Accordion>
+
+## VS Code setup
+
+Recommended VS Code extensions:
+
+<Accordion title="Essential extensions">
+  - **Azure Functions**: Manage and debug Azure Functions
+  - **Tailwind CSS IntelliSense**: Autocomplete for Tailwind classes
+  - **ES7+ React/Redux/React-Native snippets**: React code snippets
+  - **Prettier**: Code formatting
+  - **ESLint**: JavaScript linting
+</Accordion>
+
+### Launch configuration
+
+Create `.vscode/launch.json` for debugging:
+
+```json
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Next.js: debug server-side",
+      "type": "node-terminal",
+      "request": "launch",
+      "command": "npm run dev"
+    },
+    {
+      "name": "Attach to Azure Functions",
+      "type": "node",
+      "request": "attach",
+      "port": 9229,
+      "preLaunchTask": "func: host start"
+    }
+  ]
+}
+```
+
+## Environment variables reference
+
+Complete list of required environment variables:
+
+<Tabs>
+  <Tab title="Backend (azure/.env.local)">
+    ```bash
+    # OpenAI Configuration
+    OPEN_AI_KEY=sk-...
+    OPEN_AI_ORGANIZATION=org-...
+    
+    # Azure Storage Configuration
+    accountName=your-storage-account
+    accountKey=your-storage-key
+    ```
+  </Tab>
+  
+  <Tab title="Frontend (.env.local)">
+    Optional frontend environment variables:
+    
+    ```bash
+    # Vercel Analytics (optional)
+    NEXT_PUBLIC_ANALYTICS_ID=your-analytics-id
+    ```
+  </Tab>
+</Tabs>
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Architecture overview" icon="diagram-project" href="/development/architecture">
+    Learn how the system components work together
+  </Card>
+  <Card title="Frontend development" icon="react" href="/development/frontend">
+    Explore React components and UI patterns
+  </Card>
+  <Card title="Backend development" icon="server" href="/development/backend">
+    Deep dive into Azure Functions and AI integration
+  </Card>
+  <Card title="API Reference" icon="code" href="/api-reference/overview">
+    Explore the complete API documentation
+  </Card>
+</CardGroup>

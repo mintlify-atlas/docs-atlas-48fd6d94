@@ -1,0 +1,52 @@
+---
+title: Generate image
+description: Create AI-generated images from text prompts using advanced image generation models
+---
+
+## Endpoint
+
+```
+POST /api/generateImage
+```
+
+Generates an AI image based on a text prompt. The endpoint processes your prompt and returns image data that can be displayed or stored.
+
+## Request body
+
+<ParamField body="prompt" type="string" required>
+  The text description of the image you want to generate. Be descriptive for best results.
+</ParamField>
+
+## Response
+
+<ResponseField name="textData" type="string">
+  The generated image data returned from the AI model. This typically contains the image URL or base64-encoded image data.
+</ResponseField>
+
+## Example request
+
+```bash
+curl -X POST https://your-domain.com/api/generateImage \
+  -H "Content-Type: application/json" \
+  -d '{
+    "prompt": "A serene mountain landscape at sunset with pine trees"
+  }'
+```
+
+## Example response
+
+```json
+{
+  "textData": "https://example.com/generated-image-url.png"
+}
+```
+
+## Error codes
+
+<ResponseField name="400" type="error">
+  Bad request - The prompt parameter is missing or invalid
+</ResponseField>
+
+<ResponseField name="500" type="error">
+  Internal server error - The image generation service failed to process the request
+</ResponseField>

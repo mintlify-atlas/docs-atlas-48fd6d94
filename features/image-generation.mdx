@@ -1,0 +1,192 @@
+---
+title: Image generation
+description: Generate stunning AI-powered artwork using DALL-E 3 through natural language prompts
+---
+
+VisionaryAI uses OpenAI's DALL-E 3 model to transform your text descriptions into high-quality images. The image generation system is powered by Azure Functions for reliable, serverless processing.
+
+## How image generation works
+
+When you submit a prompt, VisionaryAI processes your request through a sophisticated pipeline:
+
+<Steps>
+  <Step title="Enter your prompt">
+    Type your image description in the text area. You can describe any scene, style, or concept you'd like to visualize.
+  </Step>
+  
+  <Step title="Submit for generation">
+    Click the "Generate" button to send your prompt to DALL-E 3. A loading notification appears showing your prompt.
+  </Step>
+  
+  <Step title="AI creates your image">
+    DALL-E 3 processes your prompt and generates a 1024x1024 pixel image based on your description.
+  </Step>
+  
+  <Step title="Image storage">
+    The generated image is automatically downloaded and uploaded to Azure Blob Storage for persistent access.
+  </Step>
+  
+  <Step title="View in gallery">
+    Your new image appears in the gallery, with the most recent generations displayed first.
+  </Step>
+</Steps>
+
+<Note>
+Each generation request creates exactly one image at 1024x1024 resolution. The process typically takes 10-30 seconds depending on prompt complexity.
+</Note>
+
+## Writing effective prompts
+
+The quality of your generated images depends heavily on how you describe them. Here are some tips:
+
+<Accordion title="Be specific about style">
+Include artistic style descriptors in your prompt:
+- "oil painting of a sunset over mountains"
+- "watercolor portrait of a golden retriever"
+- "photo-realistic city street at night"
+- "abstract geometric pattern in blues and greens"
+</Accordion>
+
+<Accordion title="Add details and context">
+More details help DALL-E 3 understand your vision:
+- "a cozy coffee shop interior with warm lighting, wooden furniture, and plants on the windowsill"
+- "futuristic car design with sleek curves, metallic blue paint, in a cyberpunk city"
+</Accordion>
+
+<Accordion title="Specify quality and rendering">
+Add technical descriptors for better results:
+- "4K resolution"
+- "highly detailed"
+- "professional photography"
+- "studio lighting"
+</Accordion>
+
+## Generation feedback
+
+VisionaryAI provides real-time feedback during the generation process:
+
+### Loading state
+
+When you submit a prompt, you'll see a toast notification:
+
+```
+DALL-E 3 is generating an image for "your prompt here..."
+```
+
+<Info>
+If your prompt is longer than 20 characters, only the first 20 characters are shown in the notification to keep the UI clean.
+</Info>
+
+### Success confirmation
+
+Once generation completes successfully:
+
+```
+Your AI image has been generated!
+```
+
+The gallery automatically refreshes to display your new image.
+
+### Error handling
+
+If generation fails, you'll receive an error notification with details about what went wrong. Common issues include:
+
+- Rate limiting (too many requests in a short time)
+- Content policy violations
+- Service connectivity issues
+
+<Warning>
+DALL-E 3 enforces content policies. Prompts that violate OpenAI's usage policies will be rejected.
+</Warning>
+
+## Technical implementation
+
+The generation flow involves several components working together:
+
+### API endpoint
+
+The Next.js API route handles the initial request:
+
+```typescript app/api/generateImage/route.ts
+export async function POST(request: Request) {
+  const res = await request.json();
+  const prompt = res.prompt;
+
+  const response = await fetch(
+    "https://ai-imagegenerator.azurewebsites.net/api/generateImage?",
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ prompt }),
+    }
+  );
+  const textData = await response.text();
+
+  return NextResponse.json({ textData });
+}
+```
+
+### Azure Function processing
+
+The Azure Function handles the actual DALL-E 3 integration:
+
+```javascript azure/src/functions/generateImage.js
+const response = await openai.createImage({
+    model: "dall-e-3",
+    prompt: prompt,
+    n: 1,
+    size: '1024x1024',
+})
+image_url = response.data.data[0].url;
+
+// Download the image
+const res = await axios.get(image_url, { responseType: 'arraybuffer' });
+const arrayBuffer = res.data;
+
+// Upload to Azure Blob Storage
+const timestamp = new Date().getTime();
+const file_name = `${prompt}_${timestamp}.png`;
+const blockBlobClient = containerClient.getBlockBlobClient(file_name);
+await blockBlobClient.uploadData(arrayBuffer);
+```
+
+<Tip>
+Images are stored with filenames that include both the prompt and a timestamp, making them easy to identify and sort chronologically.
+</Tip>
+
+## Rate limiting and performance
+
+VisionaryAI is designed to handle concurrent requests efficiently:
+
+- Serverless Azure Functions scale automatically based on demand
+- Each generation is independent and doesn't block other requests
+- Generated images are cached in Azure Blob Storage for fast retrieval
+
+<Note>
+OpenAI enforces rate limits on the DALL-E 3 API. If you encounter rate limit errors, wait a few moments before submitting another generation request.
+</Note>
+
+## Image specifications
+
+All generated images follow these specifications:
+
+| Property | Value |
+|----------|-------|
+| Model | DALL-E 3 |
+| Resolution | 1024x1024 pixels |
+| Format | PNG |
+| Color depth | Full color (24-bit) |
+| Images per request | 1 |
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Prompt suggestions" icon="lightbulb" href="/features/prompt-suggestions">
+    Learn how ChatGPT can suggest creative prompts for you
+  </Card>
+  <Card title="Image gallery" icon="images" href="/features/image-gallery">
+    Explore how to browse and manage your generated images
+  </Card>
+</CardGroup>

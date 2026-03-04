@@ -1,0 +1,146 @@
+---
+title: Images
+description: A responsive grid component for displaying and refreshing AI-generated images
+---
+
+## Overview
+
+The `Images` component displays AI-generated images in a responsive grid layout. It uses SWR for efficient data fetching and provides a refresh mechanism to update the image gallery.
+
+## Props
+
+This component does not accept any props.
+
+## Type definitions
+
+### ImageType
+
+<ParamField path="name" type="string" required>
+  The filename of the generated image
+</ParamField>
+
+<ParamField path="url" type="string" required>
+  The URL pointing to the image resource
+</ParamField>
+
+```tsx
+type ImageType = {
+  name: string;
+  url: string;
+};
+```
+
+## State management
+
+The component uses SWR for data fetching with the following configuration:
+
+- `images` - Array of image objects fetched from the API
+- `isLoading` - Loading state for initial fetch
+- `isValidating` - Loading state for revalidation
+- `refreshImages` - Mutation function for optimistic updates
+- `revalidateOnFocus: false` - Prevents automatic refetch on window focus
+
+## Usage
+
+```tsx
+import Images from '@/components/Images';
+
+function Gallery() {
+  return (
+    <div>
+      <Images />
+    </div>
+  );
+}
+```
+
+## Features
+
+### Responsive grid layout
+
+The component uses a responsive grid system that adapts to different screen sizes:
+
+- **Mobile** (default): 1 column
+- **Tablet** (md): 2 columns
+- **Desktop** (lg): 3 columns
+- **Large desktop** (xl): 4 columns
+
+### First image spotlight
+
+The first image in the grid spans 2 columns and 2 rows on medium screens and above, creating a visual emphasis.
+
+```tsx
+className={`relative cursor-help 
+  ${num === 0 && "md:col-span-2 md:row-span-2"}
+  hover:scale-[104%] transition transform duration-300 ease-in-out
+`}
+```
+
+### Image hover effect
+
+When hovering over an image, an overlay appears showing the prompt used to generate it:
+
+```tsx
+<div className="absolute flex justify-center items-center w-full h-full bg-white opacity-0 hover:opacity-80 transition-opacity duration-200 z-10">
+  <p className="text-center font-light text-lg p-5">
+    {image.name.split("_").shift()?.toString().split(".").shift()}
+  </p>
+</div>
+```
+
+### Refresh button
+
+A fixed-position button allows users to manually refresh the image gallery:
+
+```tsx
+<button
+  onClick={() => refreshImages(images)}
+  className="fixed bottom-10 right-10 bg-violet-400/90 text-white px-5 py-3 rounded-md hover:bg-violet-500 focus:outline-none focus:ring-2 font-bold z-20"
+>
+  {!isLoading && isValidating ? "Refreshing..." : "Refresh Images"}
+</button>
+```
+
+## Loading states
+
+The component displays a loading message during initial fetch:
+
+```tsx
+{isLoading && (
+  <p className="text-center pb-8 font-extralight">
+    Loading <span className="text-violet-400">AI</span> Generated Images...
+  </p>
+)}
+```
+
+## Image optimization
+
+The component uses Next.js Image component with `unoptimized={true}` for displaying images:
+
+```tsx
+<Image
+  unoptimized={true}
+  src={image.url}
+  alt={image.name}
+  width={500}
+  height={500}
+  className="w-full rounded-sm shadow-2xl drop-shadow-lg z-10"
+/>
+```
+
+## Dependencies
+
+- `next/image` - Optimized image component
+- `swr` - Data fetching and caching
+- `@/lib/fetchImages` - Image fetcher function
+
+## Styling
+
+The component uses Tailwind CSS classes for styling:
+
+- Responsive grid with gap spacing
+- Fixed-position refresh button with hover effects
+- Shadow effects for depth perception
+- Smooth transitions and hover animations
+- Z-index layering for overlay effects
+- Violet color scheme matching the app theme

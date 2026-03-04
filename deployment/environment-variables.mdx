@@ -1,0 +1,357 @@
+---
+title: Environment variables
+description: Configure required environment variables for VisionaryAI's Azure Functions
+---
+
+VisionaryAI requires four environment variables to connect to Azure Blob Storage and OpenAI services.
+
+## Required variables
+
+<Info>
+All environment variables must be configured in your Azure Function App's application settings before deployment.
+</Info>
+
+### accountName
+
+Your Azure Storage account name.
+
+**Usage**: Used to construct blob storage URLs and authenticate with Azure Storage.
+
+**Example**: `visionaryaistorage`
+
+**Where it's used**:
+- `azure/lib/generateSASToken.js:8`
+- `azure/src/functions/generateImage.js:7`
+- `azure/src/functions/getImages.js:8`
+
+```javascript
+const accountName = process.env.accountName;
+const blobServiceClient = new BlobServiceClient(
+    `https://${accountName}.blob.core.windows.net`,
+    sharedKeyCredential
+);
+```
+
+### accountKey
+
+Your Azure Storage account access key (key1 or key2).
+
+**Usage**: Provides authentication credentials for blob storage operations.
+
+**Example**: `abc123def456...` (base64-encoded key)
+
+**Where it's used**:
+- `azure/lib/generateSASToken.js:9`
+- `azure/src/functions/getImages.js:9`
+
+```javascript
+const accountKey = process.env.accountKey;
+const sharedKeyCredential = new StorageSharedKeyCredential(
+    accountName,
+    accountKey
+);
+```
+
+<Warning>
+Treat your storage account key like a password. Never commit it to source control or expose it in client-side code.
+</Warning>
+
+### OPEN_AI_KEY
+
+Your OpenAI API key with access to DALL-E 3 and GPT-3.5 models.
+
+**Usage**: Authenticates requests to OpenAI's API for image generation and prompt suggestions.
+
+**Example**: `sk-proj-...` (starts with `sk-`)
+
+**Where it's used**:
+- `azure/lib/openai.js:6`
+
+```javascript
+const config = new Configuration({
+    organization: process.env.OPEN_AI_ORGANIZATION,
+    apiKey: process.env.OPEN_AI_KEY
+})
+```
+
+**Get your API key**:
+
+1. Visit [OpenAI Platform](https://platform.openai.com)
+2. Navigate to **API keys**
+3. Click **Create new secret key**
+4. Copy and save the key securely
+
+<Note>
+Ensure your OpenAI account has access to DALL-E 3. Check your [usage limits](https://platform.openai.com/account/limits) and billing settings.
+</Note>
+
+### OPEN_AI_ORGANIZATION
+
+Your OpenAI organization ID.
+
+**Usage**: Associates API requests with your OpenAI organization for billing and access control.
+
+**Example**: `org-abc123...`
+
+**Where it's used**:
+- `azure/lib/openai.js:5`
+
+```javascript
+const config = new Configuration({
+    organization: process.env.OPEN_AI_ORGANIZATION,
+    apiKey: process.env.OPEN_AI_KEY
+})
+```
+
+**Find your organization ID**:
+
+1. Visit [OpenAI Platform](https://platform.openai.com)
+2. Navigate to **Settings** > **Organization**
+3. Copy your **Organization ID**
+
+## Configuration methods
+
+### Azure Portal
+
+<Steps>
+  <Step title="Navigate to your Function App">
+    Open the Azure Portal and go to your Function App resource.
+  </Step>
+
+  <Step title="Open Configuration">
+    In the left menu, select **Settings** > **Configuration**.
+  </Step>
+
+  <Step title="Add application settings">
+    Click **New application setting** and add each variable:
+
+    | Name | Value |
+    |------|-------|
+    | `accountName` | Your storage account name |
+    | `accountKey` | Your storage account key |
+    | `OPEN_AI_KEY` | Your OpenAI API key |
+    | `OPEN_AI_ORGANIZATION` | Your OpenAI org ID |
+  </Step>
+
+  <Step title="Save changes">
+    Click **Save** and confirm the restart when prompted.
+  </Step>
+</Steps>
+
+### Azure CLI
+
+Set all variables in a single command:
+
+```bash
+az functionapp config appsettings set \
+  --name visionary-ai-functions \
+  --resource-group visionary-ai-rg \
+  --settings \
+    accountName="visionaryaistorage" \
+    accountKey="your-storage-account-key" \
+    OPEN_AI_KEY="sk-proj-your-key" \
+    OPEN_AI_ORGANIZATION="org-your-org-id"
+```
+
+### Local development
+
+For local testing, create a `local.settings.json` file in the `azure` directory:
+
+```json azure/local.settings.json
+{
+  "IsEncrypted": false,
+  "Values": {
+    "AzureWebJobsStorage": "",
+    "FUNCTIONS_WORKER_RUNTIME": "node",
+    "accountName": "visionaryaistorage",
+    "accountKey": "your-storage-account-key",
+    "OPEN_AI_KEY": "sk-proj-your-key",
+    "OPEN_AI_ORGANIZATION": "org-your-org-id"
+  }
+}
+```
+
+<Warning>
+The `local.settings.json` file is git-ignored by default. Never commit this file to version control.
+</Warning>
+
+## Retrieving Azure credentials
+
+### Storage account name
+
+```bash
+az storage account show \
+  --name visionaryaistorage \
+  --resource-group visionary-ai-rg \
+  --query name -o tsv
+```
+
+### Storage account key
+
+```bash
+az storage account keys list \
+  --account-name visionaryaistorage \
+  --resource-group visionary-ai-rg \
+  --query '[0].value' -o tsv
+```
+
+Alternatively, retrieve from the Azure Portal:
+
+1. Navigate to your Storage Account
+2. Select **Security + networking** > **Access keys**
+3. Copy **Key** from key1 or key2
+
+## Validation
+
+Verify your environment variables are set correctly:
+
+### Check Function App settings
+
+```bash
+az functionapp config appsettings list \
+  --name visionary-ai-functions \
+  --resource-group visionary-ai-rg \
+  --query "[?name=='accountName' || name=='OPEN_AI_KEY'].{Name:name, Value:value}" \
+  --output table
+```
+
+<Note>
+Sensitive values like `accountKey` are hidden in the output for security. Use the Azure Portal to verify them.
+</Note>
+
+### Test with a function call
+
+Test that environment variables are accessible:
+
+```bash
+curl https://visionary-ai-functions.azurewebsites.net/api/getChatGPTSuggestion
+```
+
+If configured correctly, this should return a creative prompt. If you receive an error, check:
+
+- Environment variables are spelled correctly
+- OpenAI API key is valid and not expired
+- Organization ID matches your OpenAI account
+
+## Security best practices
+
+### Use Azure Key Vault
+
+For production deployments, store secrets in Azure Key Vault:
+
+<Steps>
+  <Step title="Create a Key Vault">
+    ```bash
+    az keyvault create \
+      --name visionary-ai-vault \
+      --resource-group visionary-ai-rg \
+      --location eastus
+    ```
+  </Step>
+
+  <Step title="Add secrets to Key Vault">
+    ```bash
+    az keyvault secret set \
+      --vault-name visionary-ai-vault \
+      --name accountKey \
+      --value "your-storage-account-key"
+
+    az keyvault secret set \
+      --vault-name visionary-ai-vault \
+      --name openAiKey \
+      --value "sk-proj-your-key"
+    ```
+  </Step>
+
+  <Step title="Grant Function App access">
+    Enable managed identity and grant Key Vault access:
+
+    ```bash
+    # Enable system-assigned managed identity
+    az functionapp identity assign \
+      --name visionary-ai-functions \
+      --resource-group visionary-ai-rg
+
+    # Grant access to Key Vault
+    az keyvault set-policy \
+      --name visionary-ai-vault \
+      --object-id <managed-identity-principal-id> \
+      --secret-permissions get list
+    ```
+  </Step>
+
+  <Step title="Reference secrets in app settings">
+    Update application settings to reference Key Vault:
+
+    ```bash
+    az functionapp config appsettings set \
+      --name visionary-ai-functions \
+      --resource-group visionary-ai-rg \
+      --settings \
+        accountKey="@Microsoft.KeyVault(SecretUri=https://visionary-ai-vault.vault.azure.net/secrets/accountKey/)" \
+        OPEN_AI_KEY="@Microsoft.KeyVault(SecretUri=https://visionary-ai-vault.vault.azure.net/secrets/openAiKey/)"
+    ```
+  </Step>
+</Steps>
+
+### Rotate credentials regularly
+
+- Rotate storage account keys every 90 days
+- Regenerate OpenAI API keys if compromised
+- Update Key Vault secrets and app settings after rotation
+
+### Restrict access
+
+- Use Azure RBAC to limit who can view/edit Function App settings
+- Enable Azure AD authentication for Function App management
+- Audit access logs in Azure Monitor
+
+## Troubleshooting
+
+### "undefined" or "null" values
+
+**Symptoms**: Functions fail with errors about undefined environment variables.
+
+**Causes**:
+- Variables not set in Function App configuration
+- Typos in variable names
+- Function App not restarted after configuration changes
+
+**Solution**:
+1. Verify variable names match exactly (case-sensitive)
+2. Check values are set in Azure Portal > Configuration
+3. Restart the Function App
+
+### OpenAI authentication errors
+
+**Symptoms**: "Invalid API key" or "Organization not found" errors.
+
+**Causes**:
+- Expired or invalid API key
+- Wrong organization ID
+- API key doesn't have DALL-E 3 access
+
+**Solution**:
+1. Verify API key at [OpenAI Platform](https://platform.openai.com/api-keys)
+2. Check organization ID matches your account
+3. Ensure billing is set up and DALL-E 3 is enabled
+
+### Blob storage authentication errors
+
+**Symptoms**: "Authentication failed" when uploading/retrieving images.
+
+**Causes**:
+- Invalid storage account key
+- Wrong storage account name
+- Storage account key rotated
+
+**Solution**:
+1. Regenerate storage account key in Azure Portal
+2. Update `accountKey` in Function App settings
+3. Verify `accountName` matches your storage account
+
+## Next steps
+
+- [Complete Azure setup](/deployment/azure-setup)
+- [Configure blob storage](/deployment/blob-storage)
+- [Understand Azure Functions](/deployment/functions)

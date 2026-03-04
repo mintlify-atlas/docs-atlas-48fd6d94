@@ -1,0 +1,182 @@
+---
+title: Architecture overview
+description: Learn about the VisionaryAI system architecture and how components communicate
+---
+
+VisionaryAI is built on a modern, serverless architecture that combines Next.js 13 with Azure Functions to deliver AI-powered image generation capabilities.
+
+## System architecture
+
+The application follows a three-tier architecture:
+
+<Accordion title="Frontend layer">
+  Next.js 13 application with React Server Components and client-side interactivity for user interface and state management.
+</Accordion>
+
+<Accordion title="API middleware layer">
+  Next.js API Routes that act as a proxy between the frontend and Azure Functions backend.
+</Accordion>
+
+<Accordion title="Backend layer">
+  Azure Functions providing serverless compute for OpenAI API integration and Azure Blob Storage management.
+</Accordion>
+
+## Communication flow
+
+The following diagram illustrates how the frontend and backend communicate:
+
+### Image generation flow
+
+<Steps>
+  <Step title="User submits prompt">
+    User enters a text prompt in the `PromptInput` component and clicks "Generate".
+  </Step>
+  
+  <Step title="Frontend API call">
+    The component calls `/api/generateImage` endpoint with the prompt:
+    
+    ```typescript
+    const res = await fetch("/api/generateImage", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ prompt: p }),
+    });
+    ```
+  </Step>
+  
+  <Step title="API route proxy">
+    Next.js API route forwards the request to Azure Functions:
+    
+    ```typescript
+    const response = await fetch(
+      "https://ai-imagegenerator.azurewebsites.net/api/generateImage?",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ prompt }),
+      }
+    );
+    ```
+  </Step>
+  
+  <Step title="Azure Function processes request">
+    The `generateImage` function calls DALL-E 3 API, downloads the generated image, and uploads it to Azure Blob Storage.
+  </Step>
+  
+  <Step title="Response returned">
+    Success message flows back through the API route to the frontend, triggering a toast notification.
+  </Step>
+</Steps>
+
+### Image retrieval flow
+
+<Steps>
+  <Step title="Component mounts">
+    The `Images` component uses SWR to fetch images on mount.
+  </Step>
+  
+  <Step title="API route called">
+    Request goes to `/api/getImages` which proxies to Azure Functions.
+  </Step>
+  
+  <Step title="Azure Function retrieves images">
+    The `getImages` function lists all blobs from Azure Storage, generates SAS tokens for secure access, and returns sorted image URLs.
+  </Step>
+  
+  <Step title="Images displayed">
+    Frontend receives the image URLs and renders them in a responsive grid layout.
+  </Step>
+</Steps>
+
+## Key architectural decisions
+
+<Note>
+  **Why Azure Functions?** Serverless functions provide automatic scaling, reduced operational overhead, and cost-effective compute for AI workloads with variable demand.
+</Note>
+
+<Note>
+  **Why proxy through Next.js API Routes?** This pattern keeps Azure Function URLs and configuration private, enables request transformation, and provides a consistent API interface for the frontend.
+</Note>
+
+<Info>
+  **SAS Token security**: Azure Blob Storage uses Shared Access Signature (SAS) tokens with 30-minute expiration to provide temporary, secure access to generated images without exposing storage account keys.
+</Info>
+
+## Technology stack
+
+<Tabs>
+  <Tab title="Frontend">
+    - **Framework**: Next.js 13.2.4 with App Router
+    - **UI Library**: React 18.2.0
+    - **Styling**: Tailwind CSS 3.3.2
+    - **State Management**: SWR 2.1.1 for data fetching
+    - **Notifications**: react-hot-toast 2.4.0
+    - **Analytics**: Vercel Analytics
+  </Tab>
+  
+  <Tab title="Backend">
+    - **Runtime**: Azure Functions v4 (Node.js)
+    - **OpenAI Integration**: openai 3.2.1
+    - **Storage**: Azure Blob Storage via @azure/storage-blob 12.13.0
+    - **HTTP Client**: axios 1.3.4
+  </Tab>
+  
+  <Tab title="AI Models">
+    - **Image Generation**: DALL-E 3 (1024x1024 resolution)
+    - **Text Generation**: GPT-3.5 Turbo Instruct for prompt suggestions
+  </Tab>
+</Tabs>
+
+## Data flow
+
+### State management with SWR
+
+VisionaryAI uses SWR (Stale-While-Revalidate) for efficient data fetching and caching:
+
+```typescript
+const {
+  data: images,
+  isLoading,
+  mutate: refreshImages,
+  isValidating,
+} = useSWR("images", fetchImages, {
+  revalidateOnFocus: false,
+});
+```
+
+<Info>
+  SWR provides automatic revalidation, optimistic updates, and caching, reducing unnecessary API calls and improving user experience.
+</Info>
+
+### Azure Blob Storage integration
+
+Generated images are stored in Azure Blob Storage with a naming convention that includes the prompt and timestamp:
+
+```javascript
+const timestamp = new Date().getTime();
+const file_name = `${prompt}_${timestamp}.png`;
+```
+
+This allows for chronological sorting and retrieval of images based on generation time.
+
+## Scalability considerations
+
+- **Serverless compute**: Azure Functions automatically scale based on demand
+- **CDN-ready**: Blob Storage URLs can be fronted with Azure CDN for global distribution
+- **Stateless design**: No session state maintained on backend, enabling horizontal scaling
+- **Caching strategy**: SWR implements client-side caching to reduce API calls
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Frontend development" icon="react" href="/development/frontend">
+    Explore React components and client-side architecture
+  </Card>
+  <Card title="Backend development" icon="server" href="/development/backend">
+    Deep dive into Azure Functions and OpenAI integration
+  </Card>
+</CardGroup>

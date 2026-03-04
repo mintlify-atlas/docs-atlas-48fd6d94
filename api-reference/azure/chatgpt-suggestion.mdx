@@ -1,0 +1,58 @@
+---
+title: Get ChatGPT suggestion
+description: Generates a random creative prompt suggestion for DALL-E image generation
+---
+
+## Endpoint
+
+```
+GET /api/getChatGPTSuggestion
+```
+
+## Description
+
+This function uses GPT-3.5 Turbo Instruct to generate random, creative text prompts that can be used for DALL-E image generation. The prompts include details about genre, style, and artistic approach.
+
+## Request
+
+No parameters required. This is a simple GET request.
+
+## Response
+
+<ResponseField name="body" type="string">
+  A randomly generated text prompt suitable for DALL-E image generation. The prompt includes artistic details such as genre, style (oil painting, watercolor, photo-realistic, 4K, abstract, modern, black and white, etc.).
+</ResponseField>
+
+## Behavior
+
+1. Sends a request to GPT-3.5 Turbo Instruct with a specific prompt template
+2. Uses a high temperature (0.9) to ensure creative and varied responses
+3. Generates up to 100 tokens for the suggestion
+4. Returns the generated text prompt without quotes
+
+## Example request
+
+```javascript
+const response = await fetch('/api/getChatGPTSuggestion', {
+  method: 'GET'
+});
+
+const suggestion = await response.text();
+console.log(suggestion); 
+// Example output: "A majestic eagle soaring through storm clouds, oil painting style with dramatic lighting and rich textures"
+```
+
+## Implementation details
+
+The function uses the following configuration:
+
+```javascript
+const response = await openai.createCompletion({
+  model: 'gpt-3.5-turbo-instruct',
+  prompt: 'Write a random text prompt for DALL.E to generate an image, this prompt will be shown to the user,include details such as the genre and what type of painting it should be, options can include: oil painting, watercolor, photo-realistic,4K, abstract, modern, black and white etc. Do not wrap the answer in quotes',
+  max_tokens: 100,
+  temperature: 0.9,
+})
+```
+
+The high temperature setting (0.9) ensures diverse and creative suggestions on each request.

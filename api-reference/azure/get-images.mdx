@@ -1,0 +1,78 @@
+---
+title: Get images
+description: Retrieves all images from Azure Blob Storage with URLs and metadata
+---
+
+## Endpoint
+
+```
+GET /api/getImages
+```
+
+## Description
+
+This function retrieves a list of all images stored in the Azure Blob Storage "images" container. It returns URLs with SAS tokens for secure access and sorts the images by timestamp in descending order (newest first).
+
+## Request
+
+No parameters required. This is a simple GET request.
+
+## Response
+
+<ResponseField name="imageUrls" type="array">
+  An array of image objects sorted by creation time (newest first).
+  
+  <ResponseField name="url" type="string">
+    The complete URL to access the image, including the SAS token for authentication.
+    
+    Format: `https://{accountName}.blob.core.windows.net/images/{blobName}?{sasToken}`
+  </ResponseField>
+  
+  <ResponseField name="name" type="string">
+    The blob name in the format `{prompt}_{timestamp}.png`
+  </ResponseField>
+</ResponseField>
+
+## Behavior
+
+1. Connects to Azure Blob Storage using shared key credentials
+2. Lists all blobs in the "images" container
+3. Generates a fresh SAS token for secure access
+4. Constructs full URLs with SAS tokens for each image
+5. Sorts images by timestamp in descending order (newest first)
+6. Returns the sorted list as JSON
+
+## Example request
+
+```javascript
+const response = await fetch('/api/getImages', {
+  method: 'GET'
+});
+
+const data = await response.json();
+console.log(data.imageUrls);
+// [
+//   {
+//     url: "https://account.blob.core.windows.net/images/mountain_1234567890.png?sv=2021...",
+//     name: "mountain_1234567890.png"
+//   },
+//   {
+//     url: "https://account.blob.core.windows.net/images/ocean_1234567880.png?sv=2021...",
+//     name: "ocean_1234567880.png"
+//   }
+// ]
+```
+
+## Implementation details
+
+The function extracts timestamps from filenames using this parsing logic:
+
+```javascript
+const sortedImageUrls = imageUrls.sort((a, b) => {
+  const aName = a.name.split("_").pop().toString().split(".").shift();
+  const bName = b.name.split("_").pop().toString().split(".").shift();
+  return bName - aName; 
+})
+```
+
+This ensures images are displayed in reverse chronological order, with the most recently generated images appearing first.

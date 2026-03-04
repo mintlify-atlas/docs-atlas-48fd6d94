@@ -1,80 +1,316 @@
 ---
-title: "Quickstart"
-description: "Start building awesome documentation in minutes"
+title: Quickstart
+description: Get started with VisionaryAI in minutes. Learn how to set up your account, configure your API keys, and generate your first AI image
 ---
 
-## Get started in three steps
+This guide will walk you through setting up VisionaryAI and generating your first AI-powered image using DALL-E 3.
 
-Get your documentation site running locally and make your first customization.
+## Prerequisites
 
-### Step 1: Set up your local environment
+Before you begin, ensure you have:
 
-<AccordionGroup>
-  <Accordion icon="copy" title="Clone your docs locally">
-    During the onboarding process, you created a GitHub repository with your docs content if you didn't already have one. You can find a link to this repository in your [dashboard](https://dashboard.mintlify.com).
+- Node.js 18 or higher installed
+- An OpenAI API account with access to DALL-E 3
+- An Azure account (free tier works for testing)
+- Git installed on your machine
+
+<Warning>
+DALL-E 3 API access requires an OpenAI paid account. Free tier accounts do not have access to image generation endpoints.
+</Warning>
+
+## Step 1: Get your API keys
+
+VisionaryAI requires API keys from OpenAI and Azure credentials.
+
+<Steps>
+  <Step title="Get OpenAI credentials">
+    Navigate to [platform.openai.com](https://platform.openai.com) and sign in to your account.
     
-    To clone the repository locally so that you can make and preview changes to your docs, follow the [Cloning a repository](https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository) guide in the GitHub docs.
-  </Accordion>
-  <Accordion icon="rectangle-terminal" title="Start the preview server">
-    1. Install the Mintlify CLI: `npm i -g mint`
-    2. Navigate to your docs directory and run: `mint dev`
-    3. Open `http://localhost:3000` to see your docs live!
+    - Go to **API Keys** in your account settings
+    - Click **Create new secret key** and save it securely
+    - Note your organization ID from the **Settings** page
     
-    <Tip>Your preview updates automatically as you edit files.</Tip>
-  </Accordion>
-</AccordionGroup>
-
-### Step 2: Deploy your changes
-
-<AccordionGroup>
-  <Accordion icon="github" title="Install our GitHub app">
-    Install the Mintlify GitHub app from your [dashboard](https://dashboard.mintlify.com/settings/organization/github-app).
+    <Tip>
+    Keep your API key secure and never commit it to version control. You'll add it to environment variables in the next step.
+    </Tip>
+  </Step>
+  
+  <Step title="Set up Azure Storage">
+    Log in to the [Azure Portal](https://portal.azure.com) and create a storage account:
     
-    Our GitHub app automatically deploys your changes to your docs site, so you don't need to manage deployments yourself.
-</Accordion>
-<Accordion icon="palette" title="Update your site name and colors">
-    For a first change, let's update the name and colors of your docs site.
+    - Navigate to **Storage Accounts** and click **Create**
+    - Choose a resource group (create one if needed)
+    - Enter a unique storage account name
+    - Select your region and performance tier
+    - After creation, go to **Access Keys** and copy your account name and key
+    
+    <Info>
+    Azure's free tier includes 5GB of blob storage, which is sufficient for testing VisionaryAI with dozens of images.
+    </Info>
+  </Step>
+</Steps>
 
-    1. Open `docs.json` in your editor.
-    2. Change the `"name"` field to your project name.
-    3. Update the `"colors"` to match your brand.
-    4. Save and see your changes instantly at `http://localhost:3000`.
+## Step 2: Clone and configure the project
 
-    <Tip>Try changing the primary color to see an immediate difference!</Tip>
-  </Accordion>
-</AccordionGroup>
+Clone the VisionaryAI repository and set up your environment:
 
-### Step 3: Go live
+```bash
+git clone https://github.com/Srijan-D/DALLE3.git
+cd DALLE3
+```
 
-<Accordion icon="rocket" title="Publish your docs">
-  1. Commit and push your changes.
-  2. Your docs will update and be live in moments!
-</Accordion>
+Install dependencies for both the Next.js app and Azure Functions:
+
+```bash
+# Install Next.js dependencies
+npm install
+
+# Install Azure Functions dependencies
+cd azure
+npm install
+cd ..
+```
+
+<Note>
+You can use npm, yarn, or pnpm as your package manager. The project supports all three.
+</Note>
+
+## Step 3: Configure environment variables
+
+Create environment files for both the Next.js app and Azure Functions.
+
+<CodeGroup>
+```bash Next.js (.env.local)
+# OpenAI Configuration
+OPEN_AI_KEY=your_openai_api_key_here
+OPEN_AI_ORGANIZATION=your_org_id_here
+
+# Azure Functions Endpoint (use localhost during development)
+NEXT_PUBLIC_AZURE_FUNCTIONS_URL=http://localhost:7071/api
+```
+
+```bash Azure Functions (azure/local.settings.json)
+{
+  "IsEncrypted": false,
+  "Values": {
+    "AzureWebJobsStorage": "UseDevelopmentStorage=true",
+    "FUNCTIONS_WORKER_RUNTIME": "node",
+    "OPEN_AI_KEY": "your_openai_api_key_here",
+    "OPEN_AI_ORGANIZATION": "your_org_id_here",
+    "accountName": "your_azure_storage_account_name",
+    "accountKey": "your_azure_storage_account_key"
+  }
+}
+```
+</CodeGroup>
+
+<Warning>
+Never commit environment files to version control. Both `.env.local` and `local.settings.json` should be in your `.gitignore` file.
+</Warning>
+
+## Step 4: Create Azure Blob container
+
+VisionaryAI stores generated images in Azure Blob Storage:
+
+<Steps>
+  <Step title="Create a container">
+    In the Azure Portal, navigate to your storage account and select **Containers** from the left menu.
+  </Step>
+  
+  <Step title="Add the images container">
+    Click **+ Container** and name it `images`. Set the public access level to **Private**.
+  </Step>
+  
+  <Step title="Verify configuration">
+    The container name must be `images` as specified in the Azure Functions code:
+    
+    ```javascript
+    const containerName = "images";
+    ```
+  </Step>
+</Steps>
+
+## Step 5: Start the development servers
+
+Run both the Azure Functions and Next.js development servers simultaneously.
+
+<Steps>
+  <Step title="Start Azure Functions">
+    Open a terminal and navigate to the `azure` directory:
+    
+    ```bash
+    cd azure
+    npm run start
+    ```
+    
+    The Azure Functions will start on `http://localhost:7071`. You should see output confirming that all four functions are loaded:
+    - `generateImage`
+    - `getImages`
+    - `getChatGPTSuggestion`
+    - `generateSASToken`
+  </Step>
+  
+  <Step title="Start Next.js">
+    Open a second terminal in the project root:
+    
+    ```bash
+    npm run dev
+    ```
+    
+    The Next.js app will start on `http://localhost:3000`.
+  </Step>
+</Steps>
+
+<Tip>
+If you're using VS Code, you can use the Azure Functions extension to start functions directly from the editor with built-in debugging support.
+</Tip>
+
+## Step 6: Generate your first image
+
+Now you're ready to create AI-generated artwork!
+
+<Steps>
+  <Step title="Open the application">
+    Navigate to `http://localhost:3000` in your browser. You'll see the VisionaryAI interface with a prompt input area.
+  </Step>
+  
+  <Step title="Get a suggestion">
+    Click **New suggestion** to have ChatGPT generate a creative prompt for you:
+    
+    ```typescript
+    const {
+      data: suggestion,
+      mutate,
+    } = useSWR("/api/suggestion", fetchSuggestionFromChatGPT, {
+      revalidateOnFocus: false,
+    });
+    ```
+    
+    ChatGPT will provide a detailed prompt including artistic style, genre, and details.
+  </Step>
+  
+  <Step title="Use the suggestion or create your own">
+    You can either click **Use suggestion** to generate an image from ChatGPT's prompt, or type your own custom prompt in the text area.
+    
+    Example prompts:
+    - "A serene watercolor painting of a Japanese garden at sunset"
+    - "Photo-realistic portrait of a cyberpunk warrior in neon city, 4K"
+    - "Abstract oil painting with bold geometric shapes in vibrant colors"
+  </Step>
+  
+  <Step title="Generate the image">
+    Click **Generate** to start the image creation process:
+    
+    ```tsx
+    const submitPrompt = async (useSuggestion?: boolean) => {
+      const p = useSuggestion ? suggestion : inputPrompt;
+      
+      const res = await fetch("/api/generateImage", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt: p }),
+      });
+      
+      updateImages();
+    };
+    ```
+    
+    A toast notification will appear showing the generation progress. DALL-E 3 typically takes 10-30 seconds to generate an image.
+  </Step>
+  
+  <Step title="View your creation">
+    Once generated, the image will automatically appear in the gallery grid. The newest images appear first, sorted by timestamp.
+    
+    <Info>
+    Hover over any image to see the original prompt that was used to generate it.
+    </Info>
+  </Step>
+</Steps>
+
+## Understanding the image flow
+
+Here's what happens when you generate an image:
+
+<Steps>
+  <Step title="Frontend submission">
+    The `PromptInput` component sends your prompt to the Next.js API route at `/api/generateImage`.
+  </Step>
+  
+  <Step title="Azure Functions processing">
+    The API route forwards the request to the Azure Function `generateImage`, which:
+    - Calls the OpenAI API with DALL-E 3
+    - Downloads the generated image from OpenAI's temporary URL
+    - Uploads it to Azure Blob Storage with a timestamped filename
+    
+    ```javascript
+    const timestamp = new Date().getTime();
+    const file_name = `${prompt}_${timestamp}.png`;
+    await blockBlobClient.uploadData(arrayBuffer);
+    ```
+  </Step>
+  
+  <Step title="Gallery update">
+    SWR automatically refreshes the image gallery, fetching the updated list from Azure Blob Storage.
+  </Step>
+</Steps>
 
 ## Next steps
 
-Now that you have your docs running, explore these key features:
+Now that you've generated your first image, explore more features:
 
 <CardGroup cols={2}>
-
-<Card title="Write Content" icon="pen-to-square" href="/essentials/markdown">
-  Learn MDX syntax and start writing your documentation.
-</Card>
-
-<Card title="Customize style" icon="palette" href="/essentials/settings">
-  Make your docs match your brand perfectly.
-</Card>
-
-<Card title="Add code examples" icon="square-code" href="/essentials/code">
-  Include syntax-highlighted code blocks.
-</Card>
-
-<Card title="API documentation" icon="code" href="/api-reference/introduction">
-  Auto-generate API docs from OpenAPI specs.
-</Card>
-
+  <Card title="Installation guide" icon="download" href="/installation">
+    Deploy VisionaryAI to production with detailed setup instructions
+  </Card>
+  
+  <Card title="Customize prompts" icon="wand-magic-sparkles">
+    Modify the ChatGPT suggestion prompt in `azure/src/functions/getChatGPTSuggestion.js` to generate different styles
+  </Card>
+  
+  <Card title="Adjust image settings" icon="image">
+    Change image size or count by modifying the DALL-E 3 parameters in `azure/src/functions/generateImage.js`
+  </Card>
+  
+  <Card title="Add features" icon="code">
+    Extend VisionaryAI with image variations, inpainting, or custom image metadata
+  </Card>
 </CardGroup>
 
-<Note>
-  **Need help?** See our [full documentation](https://mintlify.com/docs) or join our [community](https://mintlify.com/community).
-</Note>
+## Troubleshooting
+
+<Accordion title="Error: OpenAI API rate limit exceeded">
+DALL-E 3 has rate limits based on your OpenAI account tier. If you hit the limit:
+
+- Wait a few minutes before generating more images
+- Check your rate limits at [platform.openai.com/account/rate-limits](https://platform.openai.com/account/rate-limits)
+- Consider upgrading your OpenAI account tier for higher limits
+
+The application handles rate limits gracefully with toast error notifications.
+</Accordion>
+
+<Accordion title="Error: Azure Functions not connecting">
+If the Next.js app can't reach Azure Functions:
+
+- Verify Azure Functions are running on `http://localhost:7071`
+- Check that `local.settings.json` has correct environment variables
+- Ensure your firewall isn't blocking port 7071
+- Look for error messages in the Azure Functions terminal output
+</Accordion>
+
+<Accordion title="Images not appearing in gallery">
+If images generate but don't show:
+
+- Verify the `images` container exists in your Azure Storage account
+- Check that `accountName` and `accountKey` are correct in `local.settings.json`
+- Click the **Refresh Images** button to manually trigger a gallery update
+- Check browser console for SWR or fetch errors
+</Accordion>
+
+<Accordion title="ChatGPT suggestions not loading">
+If the suggestion feature doesn't work:
+
+- Verify your OpenAI API key has access to `gpt-3.5-turbo-instruct`
+- Check the Azure Functions logs for API errors
+- Try clicking **New suggestion** again after a few seconds
+- Ensure you're not hitting OpenAI rate limits
+</Accordion>

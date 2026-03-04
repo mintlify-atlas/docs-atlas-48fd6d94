@@ -1,0 +1,417 @@
+---
+title: Backend development
+description: Deep dive into Azure Functions, OpenAI integration, and Azure Blob Storage implementation
+---
+
+VisionaryAI's backend is built with Azure Functions, providing serverless compute for AI operations and storage management.
+
+## Project structure
+
+The Azure Functions backend follows this structure:
+
+```
+azure/
+├── src/
+│   └── functions/
+│       ├── generateImage.js      # DALL-E 3 image generation
+│       ├── generateSASToken.js   # SAS token generation
+│       ├── getChatGPTSuggestion.js  # GPT prompt suggestions
+│       └── getImages.js          # Image retrieval from Blob Storage
+├── lib/
+│   ├── openai.js                 # OpenAI client configuration
+│   └── generateSASToken.js       # SAS token utility
+├── host.json                     # Azure Functions host config
+└── package.json                  # Dependencies
+```
+
+## OpenAI client configuration
+
+The OpenAI client is configured with organization and API key:
+
+```javascript
+// azure/lib/openai.js
+const { Configuration, OpenAIApi } = require("openai");
+
+const config = new Configuration({
+  organization: process.env.OPEN_AI_ORGANIZATION,
+  apiKey: process.env.OPEN_AI_KEY
+})
+
+const openai = new OpenAIApi(config)
+
+module.exports = openai
+```
+
+<Info>
+  Environment variables are managed through Azure Function App Settings for secure credential storage.
+</Info>
+
+## Azure Functions
+
+### Generate image function
+
+The core function that generates images using DALL-E 3:
+
+```javascript
+// azure/src/functions/generateImage.js
+const { app } = require('@azure/functions');
+const openai = require('../../lib/openai');
+const axios = require('axios');
+const generateSASToken = require('../../lib/generateSASToken');
+const { BlobServiceClient } = require('@azure/storage-blob');
+
+const accountName = process.env.accountName;
+const containerName = "images";
+
+app.http("generateImage", {
+    methods: ["POST"],
+    authLevel: "anonymous",
+    handler: async (request) => {
+        const { prompt } = await request.json();
+        console.log(`PROMPT=> ${prompt}`);
+
+        // Generate image with DALL-E 3
+        const response = await openai.createImage({
+            model: "dall-e-3",
+            prompt: prompt,
+            n: 1,
+            size: '1024x1024',
+        })
+        image_url = response.data.data[0].url;
+        
+        // Download the generated image
+        const res = await axios.get(image_url, { responseType: 'arraybuffer' });
+        const arrayBuffer = res.data;
+        
+        // Generate SAS token for secure access
+        sasToken = await generateSASToken();
+
+        // Connect to Blob Storage
+        const blobServiceClient = new BlobServiceClient(
+            `https://${accountName}.blob.core.windows.net?${sasToken}`
+        )
+        const containerClient = blobServiceClient.getContainerClient(containerName);
+
+        // Create filename with timestamp
+        const timestamp = new Date().getTime();
+        const file_name = `${prompt}_${timestamp}.png`;
+        
+        // Upload to Blob Storage
+        const blockBlobClient = containerClient.getBlockBlobClient(file_name);
+        try {
+            await blockBlobClient.uploadData(arrayBuffer)
+            console.log("Image uploaded to Azure Blob Storage")
+        } catch (error) {
+            console.log(" Error uploading image ", error.message)
+        }
+        
+        return { body: "Image uploaded successfully" }
+    },
+})
+```
+
+<Steps>
+  <Step title="Receive prompt">
+    Extract the text prompt from the POST request body.
+  </Step>
+  
+  <Step title="Call DALL-E 3 API">
+    Use OpenAI's `createImage` method with DALL-E 3 model to generate a 1024x1024 image.
+  </Step>
+  
+  <Step title="Download image">
+    Fetch the generated image from OpenAI's temporary URL using axios with `arraybuffer` response type.
+  </Step>
+  
+  <Step title="Generate SAS token">
+    Create a time-limited Shared Access Signature token for secure Blob Storage access.
+  </Step>
+  
+  <Step title="Upload to Blob Storage">
+    Store the image in Azure Blob Storage with a filename format: `{prompt}_{timestamp}.png`.
+  </Step>
+</Steps>
+
+<Note>
+  The function uses `authLevel: "anonymous"` which means no authentication is required. In production, consider using function keys or Azure AD authentication.
+</Note>
+
+### Get images function
+
+Retrieves all generated images from Blob Storage:
+
+```javascript
+// azure/src/functions/getImages.js
+const { app } = require('@azure/functions');
+const { BlobServiceClient, StorageSharedKeyCredential } = require('@azure/storage-blob');
+const generateSASToken = require('../../lib/generateSASToken');
+
+const accountName = process.env.accountName;
+const accountKey = process.env.accountKey;
+const containerName = "images";
+
+const sharedKeyCredential = new StorageSharedKeyCredential(accountName, accountKey);
+
+const blobServiceClient = new BlobServiceClient(
+    `https://${accountName}.blob.core.windows.net`,
+    sharedKeyCredential
+);
+
+app.http("getImages", {
+    methods: ["GET"],
+    authLevel: "anonymous",
+    handler: async (request, context) => {
+        const containerClient = blobServiceClient.getContainerClient(containerName);
+        const imageUrls = [];
+        const sasToken = await generateSASToken();
+
+        // List all blobs in the container
+        for await (const blob of containerClient.listBlobsFlat()) {
+            const imageUrl = `${blob.name}?${sasToken}`;
+            const url = `https://${accountName}.blob.core.windows.net/${containerName}/${imageUrl}`
+            imageUrls.push({ url, name: blob.name });
+        }
+        
+        // Sort by timestamp (newest first)
+        const sortedImageUrls = imageUrls.sort((a, b) => {
+            const aName = a.name.split("_").pop().toString().split(".").shift();
+            const bName = b.name.split("_").pop().toString().split(".").shift();
+            return bName - aName; 
+        })
+        
+        return {
+            jsonBody: {
+                imageUrls: sortedImageUrls
+            }
+        }
+    }
+})
+```
+
+<Accordion title="Image sorting logic">
+  Images are sorted by extracting the timestamp from filenames:
+  
+  1. Split filename by underscore: `"landscape_1234567890.png".split("_")` → `["landscape", "1234567890.png"]`
+  2. Get last element: `.pop()` → `"1234567890.png"`
+  3. Remove extension: `.split(".").shift()` → `"1234567890"`
+  4. Compare timestamps numerically: `bName - aName` (descending order)
+</Accordion>
+
+### ChatGPT suggestion function
+
+Generates creative prompt suggestions using GPT-3.5:
+
+```javascript
+// azure/src/functions/getChatGPTSuggestion.js
+const { app } = require('@azure/functions');
+const openai = require('../../lib/openai');
+
+app.http('getChatGPTSuggestion', {
+    methods: ['GET'],
+    authLevel: 'anonymous',
+    handler: async (request, context) => {
+        const response = await openai.createCompletion({
+            model: 'gpt-3.5-turbo-instruct',
+            prompt: 'Write a random text prompt for DALL.E to generate an image, this prompt will be shown to the user,include details such as the genre and what type of painting it should be, options can include: oil painting, watercolor, photo-realistic,4K, abstract, modern, black and white etc. Do not wrap the answer in quotes',
+            max_tokens: 100,
+            temperature: 0.9,
+        })
+        const responseText = response.data.choices[0].text;
+
+        return { body: responseText };
+    }
+});
+```
+
+<Info>
+  The function uses `temperature: 0.9` for high creativity, generating diverse and interesting prompt suggestions.
+</Info>
+
+## Azure Blob Storage integration
+
+### SAS token generation
+
+Shared Access Signature tokens provide secure, time-limited access to Blob Storage:
+
+```javascript
+// azure/lib/generateSASToken.js
+const {
+    BlobServiceClient,
+    StorageSharedKeyCredential,
+    BlobSASPermissions,
+    generateBlobSASQueryParameters,
+} = require('@azure/storage-blob');
+
+const accountName = process.env.accountName;
+const accountKey = process.env.accountKey;
+const containerName = "images";
+
+const sharedKeyCredential = new StorageSharedKeyCredential(
+    accountName,
+    accountKey
+)
+
+const blobServiceClient = new BlobServiceClient(
+    `https://${accountName}.blob.core.windows.net`,
+    sharedKeyCredential
+)
+
+async function generateSASToken() {
+    const containerClient = blobServiceClient.getContainerClient(containerName);
+
+    // Define permissions
+    const permissions = new BlobSASPermissions();
+    permissions.write = true;
+    permissions.read = true;
+    permissions.create = true;
+
+    // Set 30-minute expiration
+    const expiryDate = new Date();
+    expiryDate.setMinutes(expiryDate.getMinutes() + 30);
+
+    // Generate SAS token
+    const sasToken = generateBlobSASQueryParameters({
+        containerName: containerClient.containerName,
+        permissions: permissions.toString(),
+        expiresOn: expiryDate,
+    },
+        sharedKeyCredential
+    ).toString();
+
+    return sasToken;
+}
+
+module.exports = generateSASToken;
+```
+
+<Accordion title="SAS token permissions">
+  - **Read**: Allows downloading images from Blob Storage
+  - **Write**: Enables updating existing blobs
+  - **Create**: Permits creating new blobs
+  
+  These permissions are scoped to the "images" container only.
+</Accordion>
+
+<Note>
+  SAS tokens expire after 30 minutes, requiring regeneration for long-running sessions. Consider implementing token refresh logic in production applications.
+</Note>
+
+## Environment variables
+
+The backend requires the following environment variables:
+
+<Tabs>
+  <Tab title="OpenAI">
+    ```bash
+    OPEN_AI_KEY=sk-...
+    OPEN_AI_ORGANIZATION=org-...
+    ```
+  </Tab>
+  
+  <Tab title="Azure Storage">
+    ```bash
+    accountName=your-storage-account
+    accountKey=your-storage-key
+    ```
+  </Tab>
+</Tabs>
+
+<Info>
+  In Azure Functions, environment variables are configured in **Configuration > Application Settings** in the Azure Portal.
+</Info>
+
+## DALL-E 3 configuration
+
+The image generation uses these parameters:
+
+```javascript
+await openai.createImage({
+    model: "dall-e-3",
+    prompt: prompt,
+    n: 1,              // Generate 1 image per request
+    size: '1024x1024', // Square format
+})
+```
+
+<Accordion title="Available DALL-E 3 sizes">
+  - `1024x1024` (square, used in VisionaryAI)
+  - `1024x1792` (portrait)
+  - `1792x1024` (landscape)
+</Accordion>
+
+<Note>
+  DALL-E 3 only supports `n=1` (one image per request). To generate multiple images, make multiple API calls.
+</Note>
+
+## Error handling
+
+The current implementation includes basic error handling:
+
+```javascript
+try {
+    await blockBlobClient.uploadData(arrayBuffer)
+    console.log("Image uploaded to Azure Blob Storage")
+} catch (error) {
+    console.log(" Error uploading image ", error.message)
+}
+```
+
+<Info>
+  Consider implementing more robust error handling with proper error responses, retry logic, and detailed logging for production deployments.
+</Info>
+
+## Deployment
+
+Azure Functions can be deployed using:
+
+<Steps>
+  <Step title="Azure Functions Core Tools">
+    ```bash
+    cd azure
+    func azure functionapp publish <function-app-name>
+    ```
+  </Step>
+  
+  <Step title="VS Code Azure Functions extension">
+    Right-click on the `azure` folder and select "Deploy to Function App".
+  </Step>
+  
+  <Step title="Azure DevOps or GitHub Actions">
+    Set up CI/CD pipelines for automated deployments.
+  </Step>
+</Steps>
+
+## Performance considerations
+
+<Accordion title="Cold start optimization">
+  Azure Functions may experience cold starts after periods of inactivity. Consider using Premium or Dedicated plans for production workloads requiring consistent performance.
+</Accordion>
+
+<Accordion title="Connection pooling">
+  The BlobServiceClient is instantiated at the module level in `getImages.js`, enabling connection reuse across function invocations.
+</Accordion>
+
+<Accordion title="Rate limiting">
+  OpenAI APIs have rate limits. Implement queue-based processing or request throttling for high-volume scenarios.
+</Accordion>
+
+## Security best practices
+
+<Note>
+  - Store API keys in Azure Key Vault instead of Function App Settings
+  - Use Azure AD authentication for Function Apps in production
+  - Implement CORS policies to restrict frontend origins
+  - Add input validation and sanitization for user prompts
+  - Monitor OpenAI API usage to prevent abuse
+</Note>
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Architecture overview" icon="diagram-project" href="/development/architecture">
+    Understand how frontend and backend communicate
+  </Card>
+  <Card title="Local setup" icon="laptop-code" href="/development/local-setup">
+    Set up the development environment
+  </Card>
+</CardGroup>

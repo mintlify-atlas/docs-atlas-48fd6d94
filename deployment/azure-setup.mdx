@@ -1,0 +1,208 @@
+---
+title: Azure setup
+description: Set up Azure resources and deploy VisionaryAI's serverless functions
+---
+
+This guide walks you through setting up Azure resources and deploying the VisionaryAI backend infrastructure using Azure Functions.
+
+## Prerequisites
+
+Before you begin, ensure you have:
+
+- An active Azure account ([sign up for free](https://azure.microsoft.com/free/))
+- [Azure Functions Core Tools](https://docs.microsoft.com/azure/azure-functions/functions-run-local) installed
+- Node.js 14.x or later
+- An OpenAI API key with access to DALL-E 3 and GPT-3.5
+
+<Note>
+You can also use the Azure extension in VS Code to log in and deploy functions directly from the editor.
+</Note>
+
+## Create Azure resources
+
+<Steps>
+  <Step title="Create a resource group">
+    Create a new resource group to organize your VisionaryAI resources:
+
+    ```bash
+    az group create --name visionary-ai-rg --location eastus
+    ```
+  </Step>
+
+  <Step title="Create a storage account">
+    Create an Azure Storage account for blob storage and function app storage:
+
+    ```bash
+    az storage account create \
+      --name visionaryaistorage \
+      --resource-group visionary-ai-rg \
+      --location eastus \
+      --sku Standard_LRS
+    ```
+
+    <Warning>
+    Storage account names must be between 3-24 characters, lowercase letters and numbers only, and globally unique across Azure.
+    </Warning>
+  </Step>
+
+  <Step title="Create a blob container">
+    Create a container named `images` to store generated DALL-E images:
+
+    ```bash
+    az storage container create \
+      --name images \
+      --account-name visionaryaistorage \
+      --public-access off
+    ```
+  </Step>
+
+  <Step title="Create a Function App">
+    Create an Azure Function App to host your serverless functions:
+
+    ```bash
+    az functionapp create \
+      --resource-group visionary-ai-rg \
+      --consumption-plan-location eastus \
+      --runtime node \
+      --runtime-version 18 \
+      --functions-version 4 \
+      --name visionary-ai-functions \
+      --storage-account visionaryaistorage
+    ```
+  </Step>
+
+  <Step title="Retrieve storage credentials">
+    Get your storage account name and key for configuration:
+
+    ```bash
+    # Get account name (should be visionaryaistorage)
+    az storage account show \
+      --name visionaryaistorage \
+      --resource-group visionary-ai-rg \
+      --query name -o tsv
+
+    # Get account key
+    az storage account keys list \
+      --account-name visionaryaistorage \
+      --resource-group visionary-ai-rg \
+      --query '[0].value' -o tsv
+    ```
+
+    Save these values for the next step.
+  </Step>
+</Steps>
+
+## Configure environment variables
+
+Set up the required environment variables in your Function App:
+
+```bash
+az functionapp config appsettings set \
+  --name visionary-ai-functions \
+  --resource-group visionary-ai-rg \
+  --settings \
+    accountName="your-storage-account-name" \
+    accountKey="your-storage-account-key" \
+    OPEN_AI_KEY="your-openai-api-key" \
+    OPEN_AI_ORGANIZATION="your-openai-org-id"
+```
+
+See [environment variables](/deployment/environment-variables) for detailed information about each variable.
+
+## Deploy functions
+
+<Steps>
+  <Step title="Navigate to the Azure directory">
+    ```bash
+    cd azure
+    ```
+  </Step>
+
+  <Step title="Install dependencies">
+    ```bash
+    npm install
+    ```
+  </Step>
+
+  <Step title="Deploy to Azure">
+    Deploy your functions to the Function App:
+
+    ```bash
+    func azure functionapp publish visionary-ai-functions
+    ```
+
+    <Info>
+    The deployment process will bundle all functions and dependencies, then upload them to your Azure Function App.
+    </Info>
+  </Step>
+
+  <Step title="Verify deployment">
+    List your deployed functions:
+
+    ```bash
+    az functionapp function list \
+      --name visionary-ai-functions \
+      --resource-group visionary-ai-rg \
+      --query '[].name' -o table
+    ```
+
+    You should see:
+    - `generateImage`
+    - `generateSASToken`
+    - `getChatGPTSuggestion`
+    - `getImages`
+  </Step>
+</Steps>
+
+## Test your deployment
+
+Once deployed, test your functions using the Azure Portal or CLI:
+
+```bash
+# Get the function URL
+az functionapp function show \
+  --name visionary-ai-functions \
+  --resource-group visionary-ai-rg \
+  --function-name getChatGPTSuggestion \
+  --query invokeUrlTemplate -o tsv
+```
+
+Test the suggestion endpoint:
+
+```bash
+curl https://visionary-ai-functions.azurewebsites.net/api/getChatGPTSuggestion
+```
+
+## Update your Next.js configuration
+
+Update your Next.js application to use the deployed Azure Functions:
+
+```typescript
+// In your Next.js app
+const AZURE_FUNCTION_URL = 'https://visionary-ai-functions.azurewebsites.net/api'
+
+// Use in your API calls
+const response = await fetch(`${AZURE_FUNCTION_URL}/generateImage`, {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ prompt: 'your prompt here' })
+})
+```
+
+## Monitor your functions
+
+View logs and monitor function execution in the Azure Portal:
+
+1. Navigate to your Function App
+2. Select **Monitor** > **Logs**
+3. Enable Application Insights for detailed telemetry
+
+<Note>
+Application Insights is configured in `host.json` with sampling enabled to reduce costs while maintaining visibility.
+</Note>
+
+## Next steps
+
+- [Configure blob storage](/deployment/blob-storage)
+- [Understand Azure Functions](/deployment/functions)
+- [Manage environment variables](/deployment/environment-variables)

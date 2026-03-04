@@ -1,0 +1,440 @@
+---
+title: Functions
+description: Understand VisionaryAI's Azure Functions architecture and implementation
+---
+
+VisionaryAI uses Azure Functions to provide a serverless backend for image generation, storage, and AI-powered suggestions.
+
+## Architecture overview
+
+The application includes four HTTP-triggered functions:
+
+- **generateImage**: Creates images using DALL-E 3 and stores them in blob storage
+- **getImages**: Retrieves all stored images with SAS-authenticated URLs
+- **getChatGPTSuggestion**: Generates creative prompts using GPT-3.5
+- **generateSASToken**: Provides SAS tokens for blob storage access
+
+All functions use:
+- **Runtime**: Node.js 18+
+- **Trigger**: HTTP (anonymous authentication)
+- **Framework**: Azure Functions v4
+
+## Function configuration
+
+### host.json
+
+The `host.json` file configures the Azure Functions runtime:
+
+```json azure/host.json
+{
+  "version": "2.0",
+  "logging": {
+    "applicationInsights": {
+      "samplingSettings": {
+        "isEnabled": true,
+        "excludedTypes": "Request"
+      }
+    }
+  },
+  "extensionBundle": {
+    "id": "Microsoft.Azure.Functions.ExtensionBundle",
+    "version": "[3.15.0, 4.0.0)"
+  }
+}
+```
+
+**Key settings:**
+
+- **Application Insights sampling**: Enabled for telemetry with Request types excluded
+- **Extension bundle**: Uses v3.15.0+ for binding extensions
+
+### package.json
+
+Dependencies for all Azure Functions:
+
+```json azure/package.json
+{
+  "name": "azure",
+  "version": "1.0.0",
+  "description": "",
+  "scripts": {
+    "start": "func start",
+    "test": "echo \"No tests yet...\""
+  },
+  "dependencies": {
+    "@azure/functions": "^4.0.0-alpha.7",
+    "@azure/storage-blob": "^12.13.0",
+    "axios": "^1.3.4",
+    "openai": "^3.2.1"
+  },
+  "main": "src/functions/*.js"
+}
+```
+
+## generateImage
+
+Generates images using DALL-E 3 and stores them in Azure Blob Storage.
+
+### Implementation
+
+```javascript azure/src/functions/generateImage.js
+const { app } = require('@azure/functions');
+const openai = require('../../lib/openai');
+const axios = require('axios');
+const generateSASToken = require('../../lib/generateSASToken');
+const { BlobServiceClient } = require('@azure/storage-blob');
+
+const accountName = process.env.accountName;
+const containerName = "images";
+
+app.http("generateImage", {
+    methods: ["POST"],
+    authLevel: "anonymous",
+    handler: async (request) => {
+        const { prompt } = await request.json();
+        console.log(`PROMPT=> ${prompt}`);
+
+        const response = await openai.createImage({
+            model: "dall-e-3",
+            prompt: prompt,
+            n: 1,
+            size: '1024x1024',
+        })
+        image_url = response.data.data[0].url;
+        
+        const res = await axios.get(image_url, { responseType: 'arraybuffer' });
+        const arrayBuffer = res.data;
+        sasToken = await generateSASToken();
+
+        const blobServiceClient = new BlobServiceClient(
+            `https://${accountName}.blob.core.windows.net?${sasToken}`
+        )
+        const containerClient = blobServiceClient.getContainerClient(containerName);
+
+        const timestamp = new Date().getTime();
+        const file_name = `${prompt}_${timestamp}.png`;
+        const blockBlobClient = containerClient.getBlockBlobClient(file_name);
+        
+        try {
+            await blockBlobClient.uploadData(arrayBuffer)
+            console.log("Image uploaded to Azure Blob Storage")
+        } catch (error) {
+            console.log(" Error uploading image ", error.message)
+        }
+        
+        return { body: "Image uploaded successfully" }
+    },
+})
+```
+
+### Workflow
+
+<Steps>
+  <Step title="Receive prompt">
+    Accepts a POST request with JSON body containing the image prompt:
+
+    ```json
+    {
+      "prompt": "A serene mountain landscape in watercolor style"
+    }
+    ```
+  </Step>
+
+  <Step title="Generate image">
+    Calls DALL-E 3 API with:
+    - Model: `dall-e-3`
+    - Size: `1024x1024`
+    - Number of images: `1`
+  </Step>
+
+  <Step title="Download image">
+    Fetches the generated image from the temporary OpenAI URL as an array buffer.
+  </Step>
+
+  <Step title="Generate SAS token">
+    Creates a fresh SAS token with write permissions for blob storage.
+  </Step>
+
+  <Step title="Upload to blob storage">
+    Stores the image with filename format: `{prompt}_{timestamp}.png`
+  </Step>
+</Steps>
+
+<Info>
+The function uses array buffers to efficiently handle binary image data without file system operations.
+</Info>
+
+## getImages
+
+Retrieves all stored images from blob storage with authenticated URLs.
+
+### Implementation
+
+```javascript azure/src/functions/getImages.js
+const { app } = require('@azure/functions');
+const { BlobServiceClient, StorageSharedKeyCredential } = require('@azure/storage-blob');
+const generateSASToken = require('../../lib/generateSASToken');
+
+const accountName = process.env.accountName;
+const accountKey = process.env.accountKey;
+const containerName = "images";
+
+const sharedKeyCredential = new StorageSharedKeyCredential(accountName, accountKey);
+const blobServiceClient = new BlobServiceClient(
+    `https://${accountName}.blob.core.windows.net`,
+    sharedKeyCredential
+);
+
+app.http("getImages", {
+    methods: ["GET"],
+    authLevel: "anonymous",
+    handler: async (request, context) => {
+        const containerClient = blobServiceClient.getContainerClient(containerName);
+        const imageUrls = [];
+        const sasToken = await generateSASToken();
+
+        for await (const blob of containerClient.listBlobsFlat()) {
+            const imageUrl = `${blob.name}?${sasToken}`;
+            const url = `https://${accountName}.blob.core.windows.net/${containerName}/${imageUrl}`;
+            imageUrls.push({ url, name: blob.name });
+        }
+        
+        const sortedImageUrls = imageUrls.sort((a, b) => {
+            const aName = a.name.split("_").pop().toString().split(".").shift();
+            const bName = b.name.split("_").pop().toString().split(".").shift();
+            return bName - aName; 
+        });
+        
+        return {
+            jsonBody: {
+                imageUrls: sortedImageUrls
+            }
+        }
+    }
+});
+```
+
+### Response format
+
+```json
+{
+  "imageUrls": [
+    {
+      "url": "https://account.blob.core.windows.net/images/prompt_1234567890.png?sv=2021-06-08&...",
+      "name": "prompt_1234567890.png"
+    }
+  ]
+}
+```
+
+Images are sorted by timestamp (newest first) for chronological display in the gallery.
+
+## getChatGPTSuggestion
+
+Generates creative DALL-E prompts using GPT-3.5-Turbo-Instruct.
+
+### Implementation
+
+```javascript azure/src/functions/getChatGPTSuggestion.js
+const { app } = require('@azure/functions');
+const openai = require('../../lib/openai');
+
+app.http('getChatGPTSuggestion', {
+    methods: ['GET'],
+    authLevel: 'anonymous',
+    handler: async (request, context) => {
+        const response = await openai.createCompletion({
+            model: 'gpt-3.5-turbo-instruct',
+            prompt: 'Write a random text prompt for DALL.E to generate an image, this prompt will be shown to the user,include details such as the genre and what type of painting it should be, options can include: oil painting, watercolor, photo-realistic,4K, abstract, modern, black and white etc. Do not wrap the answer in quotes',
+            max_tokens: 100,
+            temperature: 0.9,
+        })
+        const responseText = response.data.choices[0].text;
+
+        return { body: responseText };
+    }
+});
+```
+
+### Parameters
+
+- **Model**: `gpt-3.5-turbo-instruct` (optimized for completion tasks)
+- **Max tokens**: 100 (sufficient for creative prompts)
+- **Temperature**: 0.9 (high creativity and variety)
+
+### Example response
+
+```text
+A majestic waterfall in a lush rainforest, oil painting style with dramatic lighting and vibrant greens
+```
+
+<Note>
+The high temperature (0.9) ensures diverse and creative prompt suggestions for each request.
+</Note>
+
+## generateSASToken
+
+Provides SAS tokens for client-side blob storage access.
+
+### Implementation
+
+```javascript azure/src/functions/generateSASToken.js
+const { app } = require('@azure/functions');
+const generateSASToken = require('../../lib/generateSASToken');
+
+app.http("generateSASToken", {
+    methods: ["GET"],
+    authLevel: "anonymous",
+    handler: async (request, context) => {
+        sasToken = await generateSASToken();
+        return { body: sasToken };
+    }
+});
+```
+
+### Response
+
+Returns a SAS token string:
+
+```text
+sv=2021-06-08&ss=b&srt=sco&sp=rwc&se=2026-03-04T19:30:00Z&st=2026-03-04T18:30:00Z&spr=https&sig=...
+```
+
+See [blob storage](/deployment/blob-storage) for details on token generation and permissions.
+
+## OpenAI configuration
+
+Shared OpenAI client used by `generateImage` and `getChatGPTSuggestion`:
+
+```javascript azure/lib/openai.js
+const { Configuration, OpenAIApi } = require("openai");
+
+const config = new Configuration({
+    organization: process.env.OPEN_AI_ORGANIZATION,
+    apiKey: process.env.OPEN_AI_KEY
+})
+
+const openai = new OpenAIApi(config)
+
+module.exports = openai
+```
+
+## Local development
+
+### Start the Functions runtime
+
+```bash
+cd azure
+npm install
+npm run start
+```
+
+Functions will be available at:
+
+- `http://localhost:7071/api/generateImage`
+- `http://localhost:7071/api/getImages`
+- `http://localhost:7071/api/getChatGPTSuggestion`
+- `http://localhost:7071/api/generateSASToken`
+
+### Test locally
+
+<CodeGroup>
+```bash Generate image
+curl -X POST http://localhost:7071/api/generateImage \
+  -H "Content-Type: application/json" \
+  -d '{"prompt":"A sunset over mountains"}'
+```
+
+```bash Get images
+curl http://localhost:7071/api/getImages
+```
+
+```bash Get suggestion
+curl http://localhost:7071/api/getChatGPTSuggestion
+```
+
+```bash Get SAS token
+curl http://localhost:7071/api/generateSASToken
+```
+</CodeGroup>
+
+### Environment variables for local development
+
+Create a `local.settings.json` file in the `azure` directory:
+
+```json
+{
+  "IsEncrypted": false,
+  "Values": {
+    "AzureWebJobsStorage": "",
+    "FUNCTIONS_WORKER_RUNTIME": "node",
+    "accountName": "your-storage-account-name",
+    "accountKey": "your-storage-account-key",
+    "OPEN_AI_KEY": "your-openai-api-key",
+    "OPEN_AI_ORGANIZATION": "your-openai-org-id"
+  }
+}
+```
+
+<Warning>
+Never commit `local.settings.json` to source control. It's included in `.gitignore` by default.
+</Warning>
+
+## Error handling
+
+All functions include basic error handling:
+
+```javascript
+try {
+    await blockBlobClient.uploadData(arrayBuffer)
+    console.log("Image uploaded to Azure Blob Storage")
+} catch (error) {
+    console.log(" Error uploading image ", error.message)
+}
+```
+
+Consider enhancing error handling for production:
+
+- Return proper HTTP status codes (400, 500, etc.)
+- Include error messages in response body
+- Log errors to Application Insights
+- Implement retry logic for transient failures
+
+## Performance optimization
+
+### Cold start mitigation
+
+- Use consumption plan for cost-effective scaling
+- Consider Premium plan for production to reduce cold starts
+- Keep dependencies minimal
+
+### Concurrency
+
+- Default concurrency: 200 simultaneous executions per instance
+- Monitor throttling in Application Insights
+- Implement rate limiting if needed
+
+### Caching
+
+- Cache SAS tokens for their lifetime (30 minutes)
+- Consider caching image lists to reduce blob storage queries
+
+## Monitoring
+
+View function logs in real-time:
+
+```bash
+func azure functionapp logstream visionary-ai-functions
+```
+
+Monitor metrics in Azure Portal:
+
+1. Navigate to your Function App
+2. Select **Monitor** > **Metrics**
+3. View execution count, duration, and errors
+
+## Next steps
+
+- [Configure blob storage](/deployment/blob-storage)
+- [Manage environment variables](/deployment/environment-variables)
+- [Complete Azure setup](/deployment/azure-setup)

@@ -1,0 +1,288 @@
+---
+title: Blob storage
+description: Configure Azure Blob Storage for storing and serving generated DALL-E images
+---
+
+VisionaryAI uses Azure Blob Storage to persist generated DALL-E images. This guide explains the storage architecture and SAS token authentication.
+
+## Storage architecture
+
+The application uses a single storage container called `images` to store all generated artwork. Each image is:
+
+- Named with the format: `{prompt}_{timestamp}.png`
+- Stored as a PNG file (1024x1024 pixels)
+- Secured with SAS (Shared Access Signature) tokens
+- Sorted by timestamp for chronological display
+
+## Container configuration
+
+The `images` container is configured with:
+
+- **Public access**: Disabled (private)
+- **Authentication**: SAS tokens required
+- **Permissions**: Read, write, and create via SAS tokens
+
+<Warning>
+Never enable public blob access. All image access should go through SAS tokens to maintain security and control.
+</Warning>
+
+## SAS token generation
+
+The application generates short-lived SAS tokens to access blob storage securely.
+
+### Implementation
+
+Here's how VisionaryAI generates SAS tokens:
+
+```javascript azure/lib/generateSASToken.js
+const {
+    BlobServiceClient,
+    StorageSharedKeyCredential,
+    BlobSASPermissions,
+    generateBlobSASQueryParameters,
+} = require('@azure/storage-blob');
+
+const accountName = process.env.accountName;
+const accountKey = process.env.accountKey;
+const containerName = "images";
+
+const sharedKeyCredential = new StorageSharedKeyCredential(
+    accountName,
+    accountKey
+)
+
+const blobServiceClient = new BlobServiceClient(
+    `https://${accountName}.blob.core.windows.net`,
+    sharedKeyCredential
+)
+
+async function generateSASToken() {
+    const containerClient = blobServiceClient.getContainerClient(containerName);
+
+    const permissions = new BlobSASPermissions();
+    permissions.write = true;
+    permissions.read = true;
+    permissions.create = true;
+
+    const expiryDate = new Date();
+    expiryDate.setMinutes(expiryDate.getMinutes() + 30);
+
+    const sasToken = generateBlobSASQueryParameters({
+        containerName: containerClient.containerName,
+        permissions: permissions.toString(),
+        expiresOn: expiryDate,
+    },
+        sharedKeyCredential
+    ).toString();
+
+    return sasToken;
+}
+
+module.exports = generateSASToken;
+```
+
+### Key features
+
+<Steps>
+  <Step title="Credential initialization">
+    Creates a `StorageSharedKeyCredential` using the storage account name and key from environment variables.
+  </Step>
+
+  <Step title="Permission configuration">
+    Sets up SAS permissions:
+    - **Read**: View existing images
+    - **Write**: Modify images (if needed)
+    - **Create**: Upload new images
+  </Step>
+
+  <Step title="Token expiration">
+    Tokens expire 30 minutes after generation. This provides:
+    - Security through short-lived credentials
+    - Sufficient time for image upload and retrieval
+    - Automatic revocation without manual intervention
+  </Step>
+</Steps>
+
+<Info>
+SAS tokens are regenerated for each request, ensuring fresh credentials and minimizing security risks.
+</Info>
+
+## Image upload workflow
+
+When a user generates an image, the following process occurs:
+
+<Steps>
+  <Step title="DALL-E generates the image">
+    OpenAI's DALL-E 3 API creates the image and returns a temporary URL.
+  </Step>
+
+  <Step title="Download image data">
+    The function downloads the image as an array buffer:
+
+    ```javascript
+    const res = await axios.get(image_url, { responseType: 'arraybuffer' });
+    const arrayBuffer = res.data;
+    ```
+  </Step>
+
+  <Step title="Generate SAS token">
+    A fresh SAS token is generated with write permissions:
+
+    ```javascript
+    const sasToken = await generateSASToken();
+    ```
+  </Step>
+
+  <Step title="Upload to blob storage">
+    The image is uploaded using the blob client:
+
+    ```javascript
+    const blobServiceClient = new BlobServiceClient(
+        `https://${accountName}.blob.core.windows.net?${sasToken}`
+    );
+    const containerClient = blobServiceClient.getContainerClient(containerName);
+    const timestamp = new Date().getTime();
+    const file_name = `${prompt}_${timestamp}.png`;
+    const blockBlobClient = containerClient.getBlockBlobClient(file_name);
+    
+    await blockBlobClient.uploadData(arrayBuffer);
+    ```
+  </Step>
+</Steps>
+
+## Image retrieval
+
+The `getImages` function retrieves all images from the container with SAS-authenticated URLs.
+
+### Implementation
+
+```javascript azure/src/functions/getImages.js
+const { app } = require('@azure/functions');
+const { BlobServiceClient, StorageSharedKeyCredential } = require('@azure/storage-blob');
+const generateSASToken = require('../../lib/generateSASToken');
+
+const accountName = process.env.accountName;
+const accountKey = process.env.accountKey;
+const containerName = "images";
+
+const sharedKeyCredential = new StorageSharedKeyCredential(accountName, accountKey);
+const blobServiceClient = new BlobServiceClient(
+    `https://${accountName}.blob.core.windows.net`,
+    sharedKeyCredential
+);
+
+app.http("getImages", {
+    methods: ["GET"],
+    authLevel: "anonymous",
+    handler: async (request, context) => {
+        const containerClient = blobServiceClient.getContainerClient(containerName);
+        const imageUrls = [];
+        const sasToken = await generateSASToken();
+
+        for await (const blob of containerClient.listBlobsFlat()) {
+            const imageUrl = `${blob.name}?${sasToken}`;
+            const url = `https://${accountName}.blob.core.windows.net/${containerName}/${imageUrl}`;
+            imageUrls.push({ url, name: blob.name });
+        }
+        
+        const sortedImageUrls = imageUrls.sort((a, b) => {
+            const aName = a.name.split("_").pop().toString().split(".").shift();
+            const bName = b.name.split("_").pop().toString().split(".").shift();
+            return bName - aName; 
+        });
+        
+        return {
+            jsonBody: {
+                imageUrls: sortedImageUrls
+            }
+        }
+    }
+});
+```
+
+### Sorting logic
+
+Images are sorted by timestamp (newest first):
+
+1. Extract the timestamp from the filename: `prompt_1234567890.png` → `1234567890`
+2. Sort in descending order (newest first)
+3. Return the sorted array with authenticated URLs
+
+## Storage credentials
+
+Two credentials are required for blob storage operations:
+
+<CodeGroup>
+```bash Storage account name
+accountName=your-storage-account-name
+```
+
+```bash Storage account key
+accountKey=your-storage-account-key
+```
+</CodeGroup>
+
+Retrieve these from the Azure Portal:
+
+1. Navigate to your Storage Account
+2. Select **Access keys** under Security + networking
+3. Copy **Storage account name** and **Key** (key1 or key2)
+
+<Note>
+Store these credentials securely in your Function App's application settings. Never commit them to source control.
+</Note>
+
+## Best practices
+
+### Security
+
+- Use SAS tokens instead of making the container public
+- Set appropriate token expiration times (30 minutes recommended)
+- Rotate storage account keys periodically
+- Use Azure Key Vault for production deployments
+
+### Performance
+
+- Use array buffers for efficient binary data handling
+- Generate SAS tokens per-request to avoid expiration issues
+- Consider implementing caching for frequently accessed images
+
+### Cost optimization
+
+- Use Standard tier (LRS replication) for cost-effective storage
+- Implement lifecycle policies to archive old images
+- Monitor storage usage in Azure Portal
+
+## Troubleshooting
+
+### "Image upload failed" error
+
+**Cause**: SAS token may have expired or insufficient permissions.
+
+**Solution**: 
+- Verify token expiration time
+- Ensure write and create permissions are enabled
+- Check storage account credentials
+
+### Images not appearing in gallery
+
+**Cause**: SAS token in image URLs may have expired.
+
+**Solution**: 
+- Regenerate SAS tokens when fetching images
+- Ensure the `getImages` function generates fresh tokens
+
+### Authentication errors
+
+**Cause**: Invalid storage account credentials.
+
+**Solution**:
+- Verify `accountName` and `accountKey` environment variables
+- Check that the credentials match your storage account
+- Regenerate access keys if compromised
+
+## Next steps
+
+- [Learn about Azure Functions](/deployment/functions)
+- [Configure environment variables](/deployment/environment-variables)
+- [Complete Azure setup](/deployment/azure-setup)

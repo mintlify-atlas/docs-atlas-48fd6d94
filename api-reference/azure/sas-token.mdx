@@ -1,0 +1,87 @@
+---
+title: Generate SAS token
+description: Generates a time-limited Shared Access Signature token for Azure Blob Storage
+---
+
+## Endpoint
+
+```
+GET /api/generateSASToken
+```
+
+## Description
+
+This function generates a Shared Access Signature (SAS) token for secure, time-limited access to the Azure Blob Storage "images" container. The token grants read, write, and create permissions.
+
+## Request
+
+No parameters required. This is a simple GET request.
+
+## Response
+
+<ResponseField name="body" type="string">
+  A SAS token string that can be appended to Azure Blob Storage URLs for authenticated access. The token is valid for 30 minutes from generation time.
+</ResponseField>
+
+## Behavior
+
+1. Connects to Azure Blob Storage using shared key credentials
+2. Configures permissions: read, write, and create
+3. Sets expiry time to 30 minutes from the current time
+4. Generates and returns the SAS token query parameters as a string
+
+## Example request
+
+```javascript
+const response = await fetch('/api/generateSASToken', {
+  method: 'GET'
+});
+
+const sasToken = await response.text();
+console.log(sasToken);
+// Example: "sv=2021-08-06&ss=b&srt=sco&sp=rwc&se=2024-03-04T18:30:00Z&st=2024-03-04T18:00:00Z&spr=https&sig=..."
+
+// Use the token with blob URLs
+const imageUrl = `https://account.blob.core.windows.net/images/photo.png?${sasToken}`;
+```
+
+## Token permissions
+
+The generated SAS token includes the following permissions:
+
+- **Read**: Access to read blob content and metadata
+- **Write**: Ability to write or overwrite blobs
+- **Create**: Permission to create new blobs
+
+## Token expiry
+
+Tokens are valid for **30 minutes** from generation time:
+
+```javascript
+const expiryDate = new Date();
+expiryDate.setMinutes(expiryDate.getMinutes() + 30);
+```
+
+## Implementation details
+
+The underlying implementation uses Azure's `generateBlobSASQueryParameters` function:
+
+```javascript
+const permissions = new BlobSASPermissions();
+permissions.write = true;
+permissions.read = true;
+permissions.create = true;
+
+const expiryDate = new Date();
+expiryDate.setMinutes(expiryDate.getMinutes() + 30);
+
+const sasToken = generateBlobSASQueryParameters({
+  containerName: containerClient.containerName,
+  permissions: permissions.toString(),
+  expiresOn: expiryDate,
+},
+  sharedKeyCredential
+).toString();
+```
+
+The token must be regenerated after expiry to maintain access to blob storage resources.

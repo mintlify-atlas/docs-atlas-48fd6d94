@@ -1,0 +1,791 @@
+---
+title: Installation
+description: Complete installation guide for VisionaryAI covering Next.js app setup, Azure Functions deployment, and production configuration
+---
+
+This guide provides comprehensive instructions for installing and deploying VisionaryAI in both development and production environments.
+
+## System requirements
+
+Before installing VisionaryAI, ensure your system meets these requirements:
+
+- **Node.js**: Version 18.15.9 or higher
+- **npm/yarn/pnpm**: Latest stable version
+- **Git**: Version 2.0 or higher
+- **Azure CLI**: Version 2.0 or higher (for Azure Functions deployment)
+- **VS Code**: Recommended with Azure Functions extension
+
+<Info>
+VisionaryAI uses TypeScript 5.0.2 and modern ES6+ features. Ensure your development environment supports these technologies.
+</Info>
+
+## Part 1: Next.js application setup
+
+The frontend is built with Next.js 13 using the App Router architecture.
+
+### Clone the repository
+
+Start by cloning the VisionaryAI repository:
+
+```bash
+git clone https://github.com/Srijan-D/DALLE3.git
+cd DALLE3
+```
+
+<Tip>
+Fork the repository first if you plan to make customizations or contribute back to the project.
+</Tip>
+
+### Install dependencies
+
+Install all required npm packages:
+
+```bash
+npm install
+```
+
+This installs the following key dependencies:
+
+<CodeGroup>
+```json Core dependencies
+{
+  "next": "13.2.4",
+  "react": "18.2.0",
+  "react-dom": "18.2.0",
+  "typescript": "5.0.2",
+  "openai": "^3.2.1"
+}
+```
+
+```json UI and styling
+{
+  "tailwindcss": "^3.3.2",
+  "autoprefixer": "^10.4.14",
+  "postcss": "^8.4.23",
+  "csstype": "^3.0.10"
+}
+```
+
+```json Data fetching and state
+{
+  "swr": "^2.1.1",
+  "react-hot-toast": "^2.4.0"
+}
+```
+
+```json Analytics and monitoring
+{
+  "@vercel/analytics": "^1.1.1"
+}
+```
+</CodeGroup>
+
+### Configure OpenAI client
+
+VisionaryAI uses the OpenAI SDK for API communication. The configuration is located in `openai.ts`:
+
+```typescript
+import { Configuration, OpenAIApi } from "openai"
+
+const config = new Configuration({
+    organization: process.env.OPEN_AI_ORGANIZATION,
+    apiKey: process.env.OPEN_AI_KEY
+})
+
+const openai = new OpenAIApi(config)
+
+export default openai
+```
+
+Create a `.env.local` file in the project root:
+
+```bash
+OPEN_AI_KEY=sk-...
+OPEN_AI_ORGANIZATION=org-...
+NEXT_PUBLIC_AZURE_FUNCTIONS_URL=http://localhost:7071/api
+```
+
+<Warning>
+Add `.env.local` to your `.gitignore` file to prevent accidentally committing sensitive API keys. The repository includes `.env.local` in `.gitignore` by default.
+</Warning>
+
+### Configure Next.js
+
+The project uses `next.config.js` for framework configuration:
+
+```javascript
+/** @type {import('next').NextConfig} */
+const nextConfig = {
+  experimental: {
+    appDir: true,
+  },
+  images: {
+    domains: [
+      'links.papareact.com',
+      'your-storage-account.blob.core.windows.net'
+    ],
+  },
+}
+
+module.exports = nextConfig
+```
+
+<Note>
+Add your Azure Storage account domain to the `images.domains` array to allow Next.js Image optimization for generated images.
+</Note>
+
+### Understanding the API routes
+
+Next.js API routes act as a proxy to Azure Functions. Here's how they're structured:
+
+<Accordion title="Generate image endpoint">
+Location: `app/api/generateImage/route.ts`
+
+```typescript
+import { NextResponse } from "next/server";
+
+export async function POST(request: Request) {
+  const res = await request.json();
+  const prompt = res.prompt;
+
+  const response = await fetch(
+    "https://ai-imagegenerator.azurewebsites.net/api/generateImage?",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ prompt }),
+    }
+  );
+  
+  const textData = await response.text();
+  return NextResponse.json({ textData });
+}
+```
+
+This endpoint forwards image generation requests to Azure Functions.
+</Accordion>
+
+<Accordion title="Get images endpoint">
+Location: `app/api/getImages/route.ts`
+
+```typescript
+export async function GET(request: Request) {
+  const response = await fetch(
+    "https://ai-imagegenerator.azurewebsites.net/api/getImages?",
+    { cache: "no-store" }
+  );
+  
+  const blob = await response.blob();
+  const textData = await blob.text();
+  const data = JSON.parse(textData);
+
+  return new Response(JSON.stringify(data), { status: 200 });
+}
+```
+
+Retrieves the list of generated images from Azure Blob Storage.
+</Accordion>
+
+<Accordion title="ChatGPT suggestion endpoint">
+Location: `app/api/suggestion/route.ts`
+
+```typescript
+export async function GET(request: Request) {
+  const response = await fetch(
+    "https://ai-imagegenerator.azurewebsites.net/api/getChatGPTSuggestion?",
+    { cache: "no-store" }
+  );
+  
+  const textData = await response.text();
+  return new Response(JSON.stringify(textData.trim()), { status: 200 });
+}
+```
+
+Fetches AI-generated prompt suggestions from ChatGPT.
+</Accordion>
+
+### Set up SWR data fetching
+
+VisionaryAI uses SWR for efficient data fetching. The fetcher functions are in the `lib` directory:
+
+<CodeGroup>
+```typescript lib/fetchImages.ts
+//this is the fetcher function for SWR hook used
+const fetchImages = () =>
+    fetch("/api/getImages", {
+        cache: 'no-store',
+    }).then(res => res.json())
+
+export default fetchImages
+```
+
+```typescript lib/fetchSuggestionFromChatGPT.ts
+const fetchSuggestionFromChatGPT = () =>
+    fetch("/api/suggestion", {
+        cache: 'no-store',
+    }).then(res => res.json())
+
+export default fetchSuggestionFromChatGPT
+```
+</CodeGroup>
+
+These fetchers are used in the React components:
+
+```tsx
+const {
+  data: images,
+  isLoading,
+  mutate: refreshImages,
+  isValidating,
+} = useSWR("images", fetchImages, {
+  revalidateOnFocus: false,
+});
+```
+
+### Run the development server
+
+Start the Next.js development server:
+
+```bash
+npm run dev
+```
+
+The application will be available at `http://localhost:3000`.
+
+<Info>
+Next.js supports Fast Refresh, so your changes will appear instantly without losing component state.
+</Info>
+
+## Part 2: Azure Functions setup
+
+The backend uses Azure Functions for serverless compute.
+
+### Navigate to Azure directory
+
+```bash
+cd azure
+```
+
+### Install Azure dependencies
+
+```bash
+npm install
+```
+
+This installs:
+
+```json
+{
+  "@azure/functions": "^4.0.0-alpha.7",
+  "@azure/storage-blob": "^12.13.0",
+  "axios": "^1.3.4",
+  "openai": "^3.2.1"
+}
+```
+
+### Configure local settings
+
+Create `local.settings.json` in the `azure` directory:
+
+```json
+{
+  "IsEncrypted": false,
+  "Values": {
+    "AzureWebJobsStorage": "UseDevelopmentStorage=true",
+    "FUNCTIONS_WORKER_RUNTIME": "node",
+    "OPEN_AI_KEY": "sk-your-api-key",
+    "OPEN_AI_ORGANIZATION": "org-your-org-id",
+    "accountName": "your-storage-account-name",
+    "accountKey": "your-storage-account-key"
+  }
+}
+```
+
+<Warning>
+The `local.settings.json` file is gitignored by default. Never commit this file to version control as it contains sensitive credentials.
+</Warning>
+
+### Understanding Azure Functions
+
+VisionaryAI includes four Azure Functions:
+
+<Steps>
+  <Step title="generateImage function">
+    Location: `azure/src/functions/generateImage.js`
+    
+    Handles DALL-E 3 image generation and Azure Blob Storage upload:
+    
+    ```javascript
+    const { app } = require('@azure/functions');
+    const openai = require('../../lib/openai');
+    const axios = require('axios');
+    const generateSASToken = require('../../lib/generateSASToken');
+    const { BlobServiceClient } = require('@azure/storage-blob');
+
+    const accountName = process.env.accountName;
+    const containerName = "images";
+
+    app.http("generateImage", {
+        methods: ["POST"],
+        authLevel: "anonymous",
+        handler: async (request) => {
+            const { prompt } = await request.json();
+            
+            // Generate image with DALL-E 3
+            const response = await openai.createImage({
+                model: "dall-e-3",
+                prompt: prompt,
+                n: 1,
+                size: '1024x1024',
+            })
+            
+            image_url = response.data.data[0].url;
+            
+            // Download image from OpenAI
+            const res = await axios.get(image_url, { 
+                responseType: 'arraybuffer' 
+            });
+            const arrayBuffer = res.data;
+            
+            // Upload to Azure Blob Storage
+            const sasToken = await generateSASToken();
+            const blobServiceClient = new BlobServiceClient(
+                `https://${accountName}.blob.core.windows.net?${sasToken}`
+            )
+            
+            const containerClient = blobServiceClient.getContainerClient(containerName);
+            const timestamp = new Date().getTime();
+            const file_name = `${prompt}_${timestamp}.png`;
+            const blockBlobClient = containerClient.getBlockBlobClient(file_name);
+            
+            await blockBlobClient.uploadData(arrayBuffer)
+            console.log("Image uploaded to Azure Blob Storage")
+            
+            return { body: "Image uploaded successfully" }
+        },
+    })
+    ```
+    
+    <Info>
+    Images are stored with filenames like `prompt_timestamp.png` for easy sorting and identification.
+    </Info>
+  </Step>
+  
+  <Step title="getImages function">
+    Location: `azure/src/functions/getImages.js`
+    
+    Retrieves all images from Azure Blob Storage:
+    
+    ```javascript
+    const { app } = require('@azure/functions');
+    const { BlobServiceClient, StorageSharedKeyCredential } = require('@azure/storage-blob');
+    const generateSASToken = require('../../lib/generateSASToken');
+
+    const accountName = process.env.accountName;
+    const accountKey = process.env.accountKey;
+    const containerName = "images";
+
+    const sharedKeyCredential = new StorageSharedKeyCredential(accountName, accountKey);
+    const blobServiceClient = new BlobServiceClient(
+        `https://${accountName}.blob.core.windows.net`,
+        sharedKeyCredential
+    );
+
+    app.http("getImages", {
+        methods: ["GET"],
+        authLevel: "anonymous",
+        handler: async (request, context) => {
+            const containerClient = blobServiceClient.getContainerClient(containerName);
+            const imageUrls = [];
+            const sasToken = await generateSASToken();
+
+            for await (const blob of containerClient.listBlobsFlat()) {
+                const imageUrl = `${blob.name}?${sasToken}`;
+                const url = `https://${accountName}.blob.core.windows.net/${containerName}/${imageUrl}`
+                imageUrls.push({ url, name: blob.name });
+            }
+            
+            // Sort by timestamp (newest first)
+            const sortedImageUrls = imageUrls.sort((a, b) => {
+                const aName = a.name.split("_").pop().toString().split(".").shift();
+                const bName = b.name.split("_").pop().toString().split(".").shift();
+                return bName - aName; 
+            })
+            
+            return {
+                jsonBody: { imageUrls: sortedImageUrls }
+            }
+        }
+    })
+    ```
+  </Step>
+  
+  <Step title="getChatGPTSuggestion function">
+    Location: `azure/src/functions/getChatGPTSuggestion.js`
+    
+    Generates creative prompt suggestions using ChatGPT:
+    
+    ```javascript
+    const { app } = require('@azure/functions');
+    const openai = require('../../lib/openai');
+
+    app.http('getChatGPTSuggestion', {
+        methods: ['GET'],
+        authLevel: 'anonymous',
+        handler: async (request, context) => {
+            const response = await openai.createCompletion({
+                model: 'gpt-3.5-turbo-instruct',
+                prompt: 'Write a random text prompt for DALL.E to generate an image, this prompt will be shown to the user, include details such as the genre and what type of painting it should be, options can include: oil painting, watercolor, photo-realistic, 4K, abstract, modern, black and white etc. Do not wrap the answer in quotes',
+                max_tokens: 100,
+                temperature: 0.9,
+            })
+            
+            const responseText = response.data.choices[0].text;
+            return { body: responseText };
+        }
+    });
+    ```
+    
+    <Tip>
+    Modify the prompt in this function to customize the style and type of suggestions ChatGPT generates.
+    </Tip>
+  </Step>
+  
+  <Step title="generateSASToken function">
+    Location: `azure/lib/generateSASToken.js`
+    
+    Creates secure SAS tokens for blob access:
+    
+    ```javascript
+    const { BlobServiceClient, StorageSharedKeyCredential, generateBlobSASQueryParameters, BlobSASPermissions } = require('@azure/storage-blob');
+
+    async function generateSASToken() {
+        const accountName = process.env.accountName;
+        const accountKey = process.env.accountKey;
+        
+        const sharedKeyCredential = new StorageSharedKeyCredential(accountName, accountKey);
+        
+        const sasOptions = {
+            containerName: 'images',
+            permissions: BlobSASPermissions.parse('r'),
+            startsOn: new Date(),
+            expiresOn: new Date(new Date().valueOf() + 86400 * 1000),
+        };
+        
+        const sasToken = generateBlobSASQueryParameters(sasOptions, sharedKeyCredential).toString();
+        return sasToken;
+    }
+
+    module.exports = generateSASToken;
+    ```
+    
+    <Note>
+    SAS tokens expire after 24 hours (86400 seconds) for security. Adjust `expiresOn` if you need different expiration times.
+    </Note>
+  </Step>
+</Steps>
+
+### Configure OpenAI for Azure Functions
+
+The OpenAI configuration for Azure Functions is in `azure/lib/openai.js`:
+
+```javascript
+const { Configuration, OpenAIApi } = require("openai");
+
+const config = new Configuration({
+    organization: process.env.OPEN_AI_ORGANIZATION,
+    apiKey: process.env.OPEN_AI_KEY
+})
+
+const openai = new OpenAIApi(config)
+
+module.exports = openai
+```
+
+### Start Azure Functions locally
+
+```bash
+npm run start
+```
+
+The functions will be available at:
+- `http://localhost:7071/api/generateImage`
+- `http://localhost:7071/api/getImages`
+- `http://localhost:7071/api/getChatGPTSuggestion`
+- `http://localhost:7071/api/generateSASToken`
+
+<Info>
+Azure Functions Core Tools must be installed globally. Install with: `npm install -g azure-functions-core-tools@4`
+</Info>
+
+## Part 3: Azure Blob Storage setup
+
+Configure Azure Blob Storage to store generated images.
+
+<Steps>
+  <Step title="Create a storage account">
+    In the Azure Portal:
+    - Navigate to **Storage Accounts**
+    - Click **+ Create**
+    - Select subscription and resource group
+    - Enter a globally unique account name
+    - Choose region (same as your Functions app for best performance)
+    - Select performance tier (Standard is sufficient)
+    - Click **Review + Create**
+  </Step>
+  
+  <Step title="Create the images container">
+    After the storage account is created:
+    - Go to **Containers** in the left menu
+    - Click **+ Container**
+    - Name it `images` (must match the code)
+    - Set public access level to **Private**
+    - Click **Create**
+  </Step>
+  
+  <Step title="Get access credentials">
+    Navigate to **Access Keys** under Security + networking:
+    - Copy the **Storage account name**
+    - Click **Show keys** and copy **key1**
+    - Add these to your environment configuration
+  </Step>
+</Steps>
+
+<Warning>
+Never expose your storage account key publicly. Use SAS tokens for client-side access and keep account keys in secure environment variables.
+</Warning>
+
+## Part 4: Production deployment
+
+Deploy VisionaryAI to production environments.
+
+### Deploy Azure Functions
+
+<Steps>
+  <Step title="Install Azure CLI">
+    Download and install the [Azure CLI](https://docs.microsoft.com/en-us/cli/azure/install-azure-cli).
+  </Step>
+  
+  <Step title="Login to Azure">
+    ```bash
+    az login
+    ```
+    
+    Or use VS Code Azure extension to login visually.
+  </Step>
+  
+  <Step title="Deploy functions">
+    From the `azure` directory:
+    
+    ```bash
+    # Create a function app (first time only)
+    az functionapp create \
+      --resource-group your-resource-group \
+      --consumption-plan-location your-region \
+      --runtime node \
+      --runtime-version 18 \
+      --functions-version 4 \
+      --name your-function-app-name \
+      --storage-account your-storage-account
+
+    # Deploy the functions
+    func azure functionapp publish your-function-app-name
+    ```
+  </Step>
+  
+  <Step title="Configure application settings">
+    Add environment variables to your Azure Function App:
+    
+    ```bash
+    az functionapp config appsettings set \
+      --name your-function-app-name \
+      --resource-group your-resource-group \
+      --settings \
+      OPEN_AI_KEY=your-key \
+      OPEN_AI_ORGANIZATION=your-org \
+      accountName=your-storage \
+      accountKey=your-storage-key
+    ```
+  </Step>
+</Steps>
+
+### Deploy Next.js app
+
+VisionaryAI can be deployed to Vercel, Azure Static Web Apps, or any Node.js hosting:
+
+<CodeGroup>
+```bash Vercel
+# Install Vercel CLI
+npm i -g vercel
+
+# Deploy
+vercel
+
+# Add environment variables in Vercel dashboard:
+# - OPEN_AI_KEY
+# - OPEN_AI_ORGANIZATION
+# - NEXT_PUBLIC_AZURE_FUNCTIONS_URL
+```
+
+```bash Azure Static Web Apps
+# Install SWA CLI
+npm install -g @azure/static-web-apps-cli
+
+# Build the app
+npm run build
+
+# Deploy
+swa deploy --app-location . --output-location .next
+```
+
+```bash Docker
+# Create Dockerfile
+FROM node:18-alpine
+WORKDIR /app
+COPY package*.json ./
+RUN npm ci --only=production
+COPY . .
+RUN npm run build
+EXPOSE 3000
+CMD ["npm", "start"]
+
+# Build and run
+docker build -t visionaryai .
+docker run -p 3000:3000 -e OPEN_AI_KEY=xxx visionaryai
+```
+</CodeGroup>
+
+<Tip>
+Vercel is recommended for Next.js deployments as it provides optimal performance and automatic deployments from Git.
+</Tip>
+
+### Update API endpoints
+
+After deploying Azure Functions, update the endpoints in your Next.js app:
+
+```typescript
+// Update all fetch URLs in:
+// - app/api/generateImage/route.ts
+// - app/api/getImages/route.ts
+// - app/api/suggestion/route.ts
+
+const response = await fetch(
+  "https://your-function-app-name.azurewebsites.net/api/generateImage?",
+  // ...
+);
+```
+
+Or use environment variables:
+
+```typescript
+const AZURE_FUNCTIONS_URL = process.env.NEXT_PUBLIC_AZURE_FUNCTIONS_URL;
+
+const response = await fetch(
+  `${AZURE_FUNCTIONS_URL}/generateImage`,
+  // ...
+);
+```
+
+## Verification
+
+After installation, verify everything works:
+
+<Steps>
+  <Step title="Test Azure Functions">
+    Check the function endpoints are responding:
+    
+    ```bash
+    curl https://your-function-app.azurewebsites.net/api/getChatGPTSuggestion
+    ```
+  </Step>
+  
+  <Step title="Test Next.js app">
+    Open your deployed URL and:
+    - Verify the UI loads correctly
+    - Click "New suggestion" to test ChatGPT integration
+    - Generate a test image
+    - Confirm the image appears in the gallery
+  </Step>
+  
+  <Step title="Check Azure Storage">
+    In the Azure Portal:
+    - Navigate to your storage account
+    - Open the `images` container
+    - Verify generated images appear with correct naming
+  </Step>
+</Steps>
+
+## Performance optimization
+
+<Accordion title="Enable image caching">
+Add caching headers to Azure Blob Storage:
+
+```javascript
+await blockBlobClient.setHTTPHeaders({
+  blobCacheControl: 'public, max-age=31536000, immutable'
+});
+```
+</Accordion>
+
+<Accordion title="Optimize SWR configuration">
+Adjust SWR settings for better performance:
+
+```tsx
+const { data } = useSWR("images", fetchImages, {
+  revalidateOnFocus: false,
+  revalidateOnReconnect: false,
+  dedupingInterval: 60000, // 1 minute
+});
+```
+</Accordion>
+
+<Accordion title="Use CDN for static assets">
+Enable Azure CDN for your blob storage:
+- Reduces latency for global users
+- Lowers costs by caching images
+- Improves load times significantly
+</Accordion>
+
+## Troubleshooting
+
+<Accordion title="Azure Functions deployment fails">
+Common issues:
+- Verify you have the correct Azure CLI version
+- Check that `host.json` exists in the azure directory
+- Ensure function app name is globally unique
+- Review deployment logs: `func azure functionapp logstream your-app-name`
+</Accordion>
+
+<Accordion title="CORS errors in production">
+Add CORS configuration to Azure Functions:
+
+```bash
+az functionapp cors add \
+  --name your-function-app \
+  --resource-group your-rg \
+  --allowed-origins https://your-nextjs-app.vercel.app
+```
+</Accordion>
+
+<Accordion title="Images not persisting">
+Verify:
+- Storage account connection string is correct
+- Container permissions allow write access
+- SAS token has correct permissions (read + write)
+- Function app has network access to storage account
+</Accordion>
+
+## Next steps
+
+With VisionaryAI installed, you can:
+
+- Customize the UI by editing components in `components/`
+- Modify ChatGPT prompts in `azure/src/functions/getChatGPTSuggestion.js`
+- Add image metadata storage for better organization
+- Implement user authentication and private galleries
+- Add image editing features like variations or inpainting
+- Set up monitoring with Azure Application Insights
+
+<Info>
+For help or questions, reach out to [@Srijan_Dby](https://twitter.com/Srijan_Dby) on Twitter or open an issue on [GitHub](https://github.com/Srijan-D/DALLE3).
+</Info>

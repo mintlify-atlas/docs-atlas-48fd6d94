@@ -1,0 +1,67 @@
+---
+title: Generate image
+description: Creates an AI-generated image using DALL-E 3 and stores it in Azure Blob Storage
+---
+
+## Endpoint
+
+```
+POST /api/generateImage
+```
+
+## Description
+
+This function generates an image using OpenAI's DALL-E 3 model based on a text prompt, then downloads and uploads the generated image to Azure Blob Storage for persistent storage.
+
+## Request body
+
+<ParamField body="prompt" type="string" required>
+  The text description of the image to generate. This prompt is passed directly to DALL-E 3 to create the image.
+</ParamField>
+
+## Response
+
+<ResponseField name="body" type="string">
+  Returns "Image uploaded successfully" when the image has been generated and stored.
+</ResponseField>
+
+## Behavior
+
+1. Receives a text prompt from the request body
+2. Calls OpenAI's DALL-E 3 API to generate a 1024x1024 image
+3. Downloads the generated image as an array buffer
+4. Generates a SAS token for Azure Blob Storage authentication
+5. Uploads the image to the "images" container with a filename format: `{prompt}_{timestamp}.png`
+6. Returns a success message
+
+## Example request
+
+```javascript
+const response = await fetch('/api/generateImage', {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json',
+  },
+  body: JSON.stringify({
+    prompt: 'A serene mountain landscape at sunset'
+  })
+});
+
+const result = await response.text();
+console.log(result); // "Image uploaded successfully"
+```
+
+## Implementation details
+
+The function uses the following configuration for DALL-E 3:
+
+```javascript
+const response = await openai.createImage({
+  model: "dall-e-3",
+  prompt: prompt,
+  n: 1,
+  size: '1024x1024',
+})
+```
+
+Images are stored in Azure Blob Storage with a timestamp-based naming convention to ensure uniqueness and enable chronological sorting.
